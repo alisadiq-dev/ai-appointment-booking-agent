@@ -1,0 +1,43 @@
+[project]
+name = "ai-appointment-booking-agent"
+version = "0.1.0"
+description = "AI receptionist API that books appointments via Google Calendar after explicit customer confirmation."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.142.2",
+    "pydantic-settings>=2.15.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.9",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ANN", "S", "C4", "PT", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "ANN"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "--cov=app --cov-report=term-missing --cov-report=xml --strict-markers"
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError"]
