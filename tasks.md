@@ -28,9 +28,14 @@ Decisions (approved): JWKS only (ES256/RS256, never HS256). Token `role` claim i
 - Follow-up (Phase 7): reject anonymous-sign-in tokens (`is_anonymous` claim) if anonymous sign-ins are ever enabled
 
 ## Phase 3: Core booking service (no AI)
-- [ ] Availability, create, reschedule, cancel, overlap prevention (full TDD)
-- [ ] Integration test: user A cannot read user B's bookings (repositories always filter by user_id)
-- [ ] Test: rescheduling a booking to a time overlapping itself succeeds; to another booking's time fails (409)
+Decisions (approved): `BUSINESS_TIMEZONE` default Asia/Karachi (DST proven with Europe/London tests); 15-minute slot grid; psycopg 3 sync + pool; thin routers in this phase; cancel is `POST /bookings/{id}/cancel` (row kept), reschedule is `PATCH /bookings/{id}`; only own, confirmed, future bookings can be changed; cancelled bookings return 409 `booking_not_active` on both cancel and reschedule.
+- [x] Availability, create, reschedule, cancel, overlap prevention (full TDD)
+- [x] Integration test: user A cannot read, reschedule or cancel user B's bookings (repositories always filter by user_id)
+- [x] Test: rescheduling a booking to a time overlapping itself succeeds; to another booking's time fails (409)
+- [x] Thin routers: GET /services, /business-hours, /availability; POST/GET /bookings; PATCH /bookings/{id}; POST /bookings/{id}/cancel; GET /admin/bookings
+- [x] Concurrency: advisory lock + deadlock retry; race test (6 threads x 8 rounds) passes with 0 deadlocks; DB connection scope="function" so commits happen before the response
+- Follow-up (Phase 4): Google Calendar sync hooks into create/reschedule/cancel and fills `google_event_id`
+- Follow-up (Phase 7): 404/405 from unknown routes still use FastAPI's default body, not the standard error format
 
 ## Phase 4: Google Calendar integration
 - [ ] Interface plus implementation: sync create, update, delete. Mocked in tests
@@ -48,6 +53,7 @@ Decisions (approved): JWKS only (ES256/RS256, never HS256). Token `role` claim i
 ## Phase 8: CI/CD
 - [ ] GitHub Actions: lint and tests
 - [ ] **CI must also run `supabase start` and `supabase test db`, not only pytest** (the pgTAP suite guards the overlap constraint, RLS and privileges)
+- [ ] CI must set `DATABASE_URL` so the DB-backed tests run (they skip silently without it: fail CI if the skipped count is non-zero)
 - [ ] CI must create `supabase/signing_keys.json` before `supabase start` (`echo '[]' > ...` then `supabase gen signing-key --algorithm ES256 --append`; see docs/local-supabase.md) and run `pytest -m local_supabase` with `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY`
 - [ ] Verify JWKS verification against a hosted Supabase project (asymmetric signing keys enabled) before relying on it in production
 - [ ] **CI must build the Docker image so it is verified before deploy** (Docker was never built locally before this phase; install Docker Desktop first)
