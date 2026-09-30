@@ -14,6 +14,8 @@ Decisions (approved): authenticated users get SELECT only on their own rows; all
 - [x] Propose final SQL (approved in principle; final version shown for sign-off before files are written)
 - [x] Verified on local stack (`supabase start`, `supabase test db`): overlap constraint, RLS via `SET ROLE authenticated`, anon/default privileges; tests proven to fail when the schema is broken
 - [x] Docker image built and run locally (non-root, /health and /docs OK)
+- [x] Revoked anon/authenticated grants on sequences and `set_updated_at()` (migration 07, pgTAP 005)
+- Known, accepted: Supabase's `supabase_admin` default privileges still grant new tables to anon/authenticated. Not changed (Supabase-managed). Our migrations run as `postgres`, and pgTAP 001 (anon has no privileges on any public table) fails CI if any table is ever exposed this way.
 - [x] Migrations: profiles, services, business_hours, bookings, conversation_sessions
 - [x] Overlap-prevention constraint on confirmed bookings, RLS on user-owned tables
 - [x] Seed services and business hours
