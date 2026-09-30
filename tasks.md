@@ -21,8 +21,11 @@ Decisions (approved): authenticated users get SELECT only on their own rows; all
 - [x] Seed services and business hours
 
 ## Phase 2: Auth
-- [ ] Validate Supabase JWT, current-user dependency
-- [ ] Tests: valid, expired, missing token
+Decisions (approved): JWKS only (ES256/RS256, never HS256). Token `role` claim is never used for authorization. JWKS fetch has a timeout and cache and fails closed (503 plus an ERROR log line).
+- [x] Validate Supabase JWT (`core/security.py`), JWKS key provider (`integrations/supabase_jwks.py`), `get_current_user` dependency (`api/deps.py`)
+- [x] Tests: valid, expired, missing, malformed, wrong issuer/audience/signature, alg=none, HS256 key confusion, unknown kid, JWKS down/slow/garbage
+- [x] Local asymmetric signing verified with a real GoTrue token (opt-in `pytest -m local_supabase`); setup in docs/local-supabase.md
+- Follow-up (Phase 7): reject anonymous-sign-in tokens (`is_anonymous` claim) if anonymous sign-ins are ever enabled
 
 ## Phase 3: Core booking service (no AI)
 - [ ] Availability, create, reschedule, cancel, overlap prevention (full TDD)
@@ -45,6 +48,8 @@ Decisions (approved): authenticated users get SELECT only on their own rows; all
 ## Phase 8: CI/CD
 - [ ] GitHub Actions: lint and tests
 - [ ] **CI must also run `supabase start` and `supabase test db`, not only pytest** (the pgTAP suite guards the overlap constraint, RLS and privileges)
+- [ ] CI must create `supabase/signing_keys.json` before `supabase start` (`echo '[]' > ...` then `supabase gen signing-key --algorithm ES256 --append`; see docs/local-supabase.md) and run `pytest -m local_supabase` with `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY`
+- [ ] Verify JWKS verification against a hosted Supabase project (asymmetric signing keys enabled) before relying on it in production
 - [ ] **CI must build the Docker image so it is verified before deploy** (Docker was never built locally before this phase; install Docker Desktop first)
 - [ ] Check current Cloud Run free tier limits, deploy, verify /docs live
 
