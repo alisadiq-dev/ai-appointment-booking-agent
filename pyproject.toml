@@ -5,6 +5,7 @@ description = "AI receptionist API that books appointments via Google Calendar a
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.142.2",
+    "psycopg[binary,pool]>=3.3.6",
     "pydantic-settings>=2.15.0",
     "pyjwt[crypto]>=2.15.1",
     "uvicorn[standard]>=0.54.0",
@@ -34,7 +35,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "--cov=app --cov-report=term-missing --cov-report=xml --strict-markers"
 markers = [
-    "local_supabase: needs a running local Supabase (skipped unless SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY are set)",
+    "local_supabase: needs a running local Supabase (skipped unless DATABASE_URL, or SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY, are set)",
 ]
 
 [tool.coverage.run]

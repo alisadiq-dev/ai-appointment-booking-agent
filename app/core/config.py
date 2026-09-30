@@ -1,5 +1,7 @@
 from functools import lru_cache
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +17,27 @@ class Settings(BaseSettings):
     supabase_jwt_audience: str = "authenticated"
     jwks_cache_seconds: float = 300
     jwks_timeout_seconds: float = 5
+
+    database_url: str | None = None
+    db_pool_min_size: int = Field(default=1, ge=1)
+    db_pool_max_size: int = Field(default=10, ge=1)
+    db_pool_timeout_seconds: float = Field(default=10, gt=0)
+
+    business_timezone: str = "Asia/Karachi"
+    slot_interval_minutes: int = Field(default=15, gt=0, le=1440)
+
+    @field_validator("business_timezone")
+    @classmethod
+    def _timezone_must_exist(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(f"unknown timezone: {value}") from exc
+        return value
+
+    @property
+    def business_zone(self) -> ZoneInfo:
+        return ZoneInfo(self.business_timezone)
 
     @property
     def jwt_issuer(self) -> str | None:
