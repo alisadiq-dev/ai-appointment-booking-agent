@@ -52,7 +52,20 @@ uv run pytest -m local_supabase
 ```
 
 They cover per-user isolation in SQL, the overlap rule enforced by the exclusion constraint,
-and a multi-threaded race for one slot. Without `DATABASE_URL` the rest of the suite still runs.
+and a multi-threaded race for one slot (see [concurrency.md](concurrency.md)). Without
+`DATABASE_URL` the rest of the suite still runs.
+
+### `REQUIRE_DB=1`: fail instead of skip
+
+By default, missing configuration *skips* the DB-backed tests (tests marked `requires_db`) and
+the real-GoTrue tests (marked `requires_supabase_auth`, which need `SUPABASE_URL` and
+`SUPABASE_PUBLISHABLE_KEY`). With `REQUIRE_DB=1` (also `true` or `yes`) a missing variable makes
+them fail with a message naming it, so a misconfigured pipeline cannot go green by silently
+skipping. CI sets this. Pytest reports the failure as a setup *error* and exits non-zero.
+
+```bash
+REQUIRE_DB=1 uv run pytest    # without DATABASE_URL etc.: 37 errors, exit code 1
+```
 
 ## Run the API against the local stack
 

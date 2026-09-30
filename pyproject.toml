@@ -33,8 +33,10 @@ select = ["E", "F", "I", "UP", "B", "SIM", "ANN", "S", "C4", "PT", "RUF"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "--cov=app --cov-report=term-missing --cov-report=xml --strict-markers"
+addopts = "-p pytester --cov=app --cov-report=term-missing --cov-report=xml --strict-markers"
 markers = [
+    "requires_db: needs DATABASE_URL; skipped if unset, or failed when REQUIRE_DB=1",
+    "requires_supabase_auth: needs SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY; skipped if unset, or failed when REQUIRE_DB=1",
     "local_supabase: needs a running local Supabase (skipped unless DATABASE_URL, or SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY, are set)",
 ]
 

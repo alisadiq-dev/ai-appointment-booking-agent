@@ -9,9 +9,7 @@ from psycopg.rows import dict_row
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-requires_db = pytest.mark.skipif(
-    not DATABASE_URL, reason="set DATABASE_URL (local Supabase) to run database tests"
-)
+requires_db = pytest.mark.requires_db  # skips, or fails with REQUIRE_DB=1 (tests/conftest.py)
 
 from app.repositories.types import Conn  # noqa: E402
 

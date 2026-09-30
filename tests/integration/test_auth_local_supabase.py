@@ -1,6 +1,7 @@
 """Verifies a REAL token issued by a local Supabase GoTrue against its real JWKS endpoint.
 
-Opt-in: skipped unless SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY are set. Needs `supabase start`
+Opt-in: skipped unless SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY are set (fails instead
+when REQUIRE_DB=1). Needs `supabase start`
 with asymmetric signing keys enabled (see docs/local-supabase.md).
 """
 
@@ -21,13 +22,7 @@ from app.main import create_app
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 PUBLISHABLE_KEY = os.environ.get("SUPABASE_PUBLISHABLE_KEY")
 
-pytestmark = [
-    pytest.mark.local_supabase,
-    pytest.mark.skipif(
-        not (SUPABASE_URL and PUBLISHABLE_KEY),
-        reason="set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY to run against local Supabase",
-    ),
-]
+pytestmark = [pytest.mark.local_supabase, pytest.mark.requires_supabase_auth]
 
 
 def _sign_up() -> tuple[str, str]:
