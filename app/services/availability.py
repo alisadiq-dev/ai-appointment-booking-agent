@@ -6,22 +6,11 @@ lengthen a day correctly.
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app.schemas.business_hours import BusinessHour
-
-
-@dataclass(frozen=True)
-class TimeRange:
-    """A half-open UTC interval [start, end)."""
-
-    start: datetime
-    end: datetime
-
-    def overlaps(self, start: datetime, end: datetime) -> bool:
-        return self.start < end and start < self.end
+from app.schemas.time_range import TimeRange
 
 
 def business_window(day: date, hours: Sequence[BusinessHour], zone: ZoneInfo) -> TimeRange | None:
