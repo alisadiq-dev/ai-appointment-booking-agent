@@ -71,11 +71,17 @@ taken, lock taken before every attempt).
 
 ## Reproduce
 
+Needs `supabase start`. The database container is named after the project
+(`supabase_db_ai-appointment-booking-agent`), so `docker exec` reaches it without a local `psql`.
+
 ```bash
-export DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres   # supabase start
-psql "$DATABASE_URL" -tA -c "select deadlocks from pg_stat_database where datname='postgres'"
+export DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+DEADLOCKS="docker exec supabase_db_ai-appointment-booking-agent psql -U postgres -tA \
+  -c \"select deadlocks from pg_stat_database where datname='postgres'\""
+
+eval "$DEADLOCKS"     # counter before
 for i in $(seq 1 10); do uv run pytest tests/integration/test_booking_service_db.py -k concurrent -q --no-cov; done
-psql "$DATABASE_URL" -tA -c "select deadlocks from pg_stat_database where datname='postgres'"
+eval "$DEADLOCKS"     # counter after
 ```
 
 The two counter readings should be equal. To see the original problem, remove the
