@@ -12,11 +12,11 @@ Workflow: one phase at a time. At the end of each phase run tests, summarise, li
 ## Phase 1: Database
 Decisions (approved): authenticated users get SELECT only on their own rows; all writes go through the backend. Backend connects with a role that bypasses RLS, so every repository query MUST filter by user_id. `conversation_sessions` has RLS enabled with NO policies and no grants (Data API cannot read session state). One session row per user. Reschedule updates the same row and keeps the same `google_event_id`. `services` and `business_hours` readable by `authenticated` only.
 - [x] Propose final SQL (approved in principle; final version shown for sign-off before files are written)
-- [ ] Docker Desktop installed (user confirms), then verify with `supabase start`: overlap constraint, RLS via `SET ROLE authenticated`
-- [ ] Build the Docker image once locally to verify the Dockerfile
-- [ ] Migrations: profiles, services, business_hours, bookings, conversation_sessions
-- [ ] Overlap-prevention constraint on confirmed bookings, RLS on user-owned tables
-- [ ] Seed services and business hours
+- [x] Verified on local stack (`supabase start`, `supabase test db`): overlap constraint, RLS via `SET ROLE authenticated`, anon/default privileges; tests proven to fail when the schema is broken
+- [x] Docker image built and run locally (non-root, /health and /docs OK)
+- [x] Migrations: profiles, services, business_hours, bookings, conversation_sessions
+- [x] Overlap-prevention constraint on confirmed bookings, RLS on user-owned tables
+- [x] Seed services and business hours
 
 ## Phase 2: Auth
 - [ ] Validate Supabase JWT, current-user dependency
