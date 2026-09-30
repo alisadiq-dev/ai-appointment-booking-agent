@@ -5,9 +5,9 @@ Workflow: one phase at a time. At the end of each phase run tests, summarise, li
 ## Phase 0: Repo setup
 - [x] git init, uv project, Ruff, pytest, pytest-cov (coverage tracked from first test)
 - [x] Folder structure (layered architecture)
-- [ ] Health endpoint (test first) and config via pydantic-settings
-- [ ] `.env.example`
-- [ ] Dockerfile (multi-stage, non-root, honours `$PORT`). Not build-verified locally: Docker Desktop is not installed yet
+- [x] Health endpoint (test first) and config via pydantic-settings
+- [x] `.env.example`
+- [x] Dockerfile (multi-stage, non-root, honours `$PORT`). Not build-verified locally: Docker Desktop is not installed yet
 
 ## Phase 1: Database
 - [ ] Propose final SQL and wait for approval
