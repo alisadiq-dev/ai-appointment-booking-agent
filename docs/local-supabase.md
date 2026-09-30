@@ -40,6 +40,28 @@ SUPABASE_URL="$API_URL" SUPABASE_PUBLISHABLE_KEY="$PUBLISHABLE_KEY" \
 These sign up a throwaway user in local GoTrue and check its real token against the real
 JWKS endpoint. They are skipped when the variables are not set.
 
+## Database-backed tests
+
+The repository, service and API tests that need real Postgres are skipped unless
+`DATABASE_URL` is set (they are marked `local_supabase`). With the stack running:
+
+```bash
+export DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+uv run pytest                 # everything; DB tests roll back after themselves
+uv run pytest -m local_supabase
+```
+
+They cover per-user isolation in SQL, the overlap rule enforced by the exclusion constraint,
+and a multi-threaded race for one slot. Without `DATABASE_URL` the rest of the suite still runs.
+
+## Run the API against the local stack
+
+```bash
+export SUPABASE_URL=http://127.0.0.1:54321
+export DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+uv run uvicorn app.main:app --reload     # http://127.0.0.1:8000/docs
+```
+
 ## Notes
 
 - **Rotation:** keys are cached for `JWKS_CACHE_SECONDS` (default 300). A token signed by a
