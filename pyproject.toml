@@ -35,7 +35,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "--cov=app --cov-report=term-missing --cov-report=xml --strict-markers"
 markers = [
-    "local_supabase: needs a running local Supabase (skipped unless SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY are set)",
+    "local_supabase: needs a running local Supabase (skipped unless DATABASE_URL, or SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY, are set)",
 ]
 
 [tool.coverage.run]
