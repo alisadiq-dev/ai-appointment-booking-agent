@@ -44,6 +44,7 @@ Decisions (approved): authenticated users get SELECT only on their own rows; all
 
 ## Phase 8: CI/CD
 - [ ] GitHub Actions: lint and tests
+- [ ] **CI must also run `supabase start` and `supabase test db`, not only pytest** (the pgTAP suite guards the overlap constraint, RLS and privileges)
 - [ ] **CI must build the Docker image so it is verified before deploy** (Docker was never built locally before this phase; install Docker Desktop first)
 - [ ] Check current Cloud Run free tier limits, deploy, verify /docs live
 
