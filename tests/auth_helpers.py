@@ -82,3 +82,16 @@ def forge_hs256_with_public_key(public_key: ec.EllipticCurvePublicKey) -> str:
 
 def new_user_id() -> str:
     return str(uuid.uuid4())
+
+
+class StaticKeyProvider:
+    """Key provider test double that always returns one public key, or raises."""
+
+    def __init__(self, key: Any = None, error: Exception | None = None) -> None:
+        self._key = key
+        self._error = error
+
+    def get_signing_key(self, token: str) -> Any:
+        if self._error is not None:
+            raise self._error
+        return self._key
