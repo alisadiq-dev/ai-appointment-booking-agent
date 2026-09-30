@@ -1,4 +1,7 @@
+from zoneinfo import ZoneInfo
+
 import pytest
+from pydantic import ValidationError
 
 from app.core.config import Settings
 
@@ -56,3 +59,36 @@ def test_issuer_is_none_when_supabase_url_is_not_set(monkeypatch: pytest.MonkeyP
 
     assert settings.jwt_issuer is None
     assert settings.jwks_url is None
+
+
+def test_booking_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("BUSINESS_TIMEZONE", "SLOT_INTERVAL_MINUTES", "DATABASE_URL"):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.business_timezone == "Asia/Karachi"
+    assert settings.business_zone == ZoneInfo("Asia/Karachi")
+    assert settings.slot_interval_minutes == 15
+    assert settings.database_url is None
+
+
+def test_business_timezone_can_be_overridden(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BUSINESS_TIMEZONE", "Europe/London")
+
+    assert Settings(_env_file=None).business_zone == ZoneInfo("Europe/London")
+
+
+def test_invalid_business_timezone_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BUSINESS_TIMEZONE", "Not/AZone")
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+@pytest.mark.parametrize("value", ["0", "-5", "1441"])
+def test_invalid_slot_interval_is_rejected(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    monkeypatch.setenv("SLOT_INTERVAL_MINUTES", value)
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
