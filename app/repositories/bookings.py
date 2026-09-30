@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import psycopg.errors
@@ -7,6 +8,13 @@ from app.repositories.errors import SlotTakenError
 from app.repositories.types import Conn
 from app.schemas.bookings import Booking
 from app.schemas.time_range import TimeRange
+
+# Arbitrary constant key for the transaction-scoped advisory lock that serializes booking
+# writes. There is one business calendar and write volume is tiny, so this costs nothing, and
+# it turns simultaneous conflicting writes into an orderly queue: the loser waits for the
+# winner to commit, then fails cleanly with exclusion_violation instead of deadlocking (a
+# deadlock costs Postgres' 1 s detection timeout). The exclusion constraint remains the rule.
+BOOKING_WRITE_LOCK_KEY = 7_243_001
 
 
 class BookingRepository:
@@ -24,19 +32,38 @@ class BookingRepository:
     def __init__(self, conn: Conn) -> None:
         self._conn = conn
 
+    def _write_returning_row(self, query: str, params: tuple[Any, ...]) -> dict[str, Any] | None:
+        """Run a booking write in its own transaction block and return the resulting row.
+
+        Writes queue on an advisory lock (see BOOKING_WRITE_LOCK_KEY), so conflicts normally
+        surface as exclusion_violation (23P01). As a safety net, if Postgres still aborts one
+        with deadlock_detected (40P01), retry once (the retry then sees the winner's row and
+        fails with 23P01, or succeeds if the winner rolled back) and report SlotTakenError.
+        Nobody is double-booked either way; the loser must never see a 500.
+        """
+        for attempt in (1, 2):
+            try:
+                with self._conn.transaction():
+                    self._conn.execute(
+                        "select pg_advisory_xact_lock(%s)", (BOOKING_WRITE_LOCK_KEY,)
+                    )
+                    return self._conn.execute(query, params).fetchone()
+            except psycopg.errors.ExclusionViolation as exc:
+                raise SlotTakenError from exc
+            except psycopg.errors.DeadlockDetected as exc:
+                if attempt == 2:
+                    raise SlotTakenError from exc
+        raise AssertionError("unreachable")  # pragma: no cover
+
     def create(
         self, user_id: UUID, service_id: UUID, start_at: datetime, end_at: datetime
     ) -> Booking:
-        try:
-            with self._conn.transaction():
-                row = self._conn.execute(
-                    "insert into public.bookings (user_id, service_id, start_at, end_at) "
-                    "values (%s, %s, %s, %s) "
-                    "returning id, user_id, service_id, start_at, end_at, status, google_event_id",
-                    (user_id, service_id, start_at, end_at),
-                ).fetchone()
-        except psycopg.errors.ExclusionViolation as exc:
-            raise SlotTakenError from exc
+        row = self._write_returning_row(
+            "insert into public.bookings (user_id, service_id, start_at, end_at) "
+            "values (%s, %s, %s, %s) "
+            "returning id, user_id, service_id, start_at, end_at, status, google_event_id",
+            (user_id, service_id, start_at, end_at),
+        )
         assert row is not None  # noqa: S101 - INSERT ... RETURNING always yields a row
         return Booking.model_validate(row)
 
@@ -60,16 +87,12 @@ class BookingRepository:
         self, booking_id: UUID, user_id: UUID, start_at: datetime, end_at: datetime
     ) -> Booking | None:
         """Move a confirmed booking in place. None if it is not the user's or not confirmed."""
-        try:
-            with self._conn.transaction():
-                row = self._conn.execute(
-                    "update public.bookings set start_at = %s, end_at = %s "
-                    "where id = %s and user_id = %s and status = 'confirmed' "
-                    "returning id, user_id, service_id, start_at, end_at, status, google_event_id",
-                    (start_at, end_at, booking_id, user_id),
-                ).fetchone()
-        except psycopg.errors.ExclusionViolation as exc:
-            raise SlotTakenError from exc
+        row = self._write_returning_row(
+            "update public.bookings set start_at = %s, end_at = %s "
+            "where id = %s and user_id = %s and status = 'confirmed' "
+            "returning id, user_id, service_id, start_at, end_at, status, google_event_id",
+            (start_at, end_at, booking_id, user_id),
+        )
         return Booking.model_validate(row) if row else None
 
     def cancel(self, booking_id: UUID, user_id: UUID) -> Booking | None:

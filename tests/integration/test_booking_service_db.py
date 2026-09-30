@@ -175,42 +175,55 @@ def test_admin_listing_needs_the_admin_role(conn: Conn) -> None:
 
 
 def test_concurrent_requests_for_one_slot_have_exactly_one_winner() -> None:
-    """Separate connections, committed data, simultaneous inserts. The DB must pick one."""
+    """Separate connections, committed data, simultaneous inserts. The DB must pick one.
+
+    Several rounds on different slots: Postgres sometimes resolves the race with a deadlock
+    abort instead of an exclusion violation, and the repository must handle both.
+    """
     assert DATABASE_URL
-    contenders = 6
+    contenders, rounds = 6, 8
     setup: psycopg.Connection[dict[str, Any]] = psycopg.connect(
         DATABASE_URL, row_factory=dict_row, autocommit=True
     )
     users = [make_user(setup) for _ in range(contenders)]  # autocommit: rows are committed
     haircut = seeded_service_id(setup)
-    barrier = threading.Barrier(contenders)
-    results: list[str] = []
+    errors: list[BaseException] = []
 
-    def attempt(user: UUID) -> None:
-        connection: psycopg.Connection[dict[str, Any]] = psycopg.connect(
-            DATABASE_URL, row_factory=dict_row
-        )
-        try:
-            svc = build_service(connection)
-            barrier.wait()
+    def run_round(start: datetime) -> list[str]:
+        barrier = threading.Barrier(contenders)
+        results: list[str] = []
+
+        def attempt(user: UUID) -> None:
+            connection: psycopg.Connection[dict[str, Any]] = psycopg.connect(
+                DATABASE_URL, row_factory=dict_row
+            )
             try:
-                svc.create_booking(user, haircut, at(6, day=14))
-                connection.commit()
-                results.append("booked")
-            except SlotUnavailableError:
-                connection.rollback()
-                results.append("taken")
-        finally:
-            connection.close()
+                svc = build_service(connection)
+                barrier.wait()
+                try:
+                    svc.create_booking(user, haircut, start)
+                    connection.commit()
+                    results.append("booked")
+                except SlotUnavailableError:
+                    connection.rollback()
+                    results.append("taken")
+            except BaseException as exc:
+                errors.append(exc)
+            finally:
+                connection.close()
 
-    try:
         threads = [threading.Thread(target=attempt, args=(u,)) for u in users]
         for t in threads:
             t.start()
         for t in threads:
             t.join(timeout=30)
+        return results
 
-        assert sorted(results) == ["booked"] + ["taken"] * (contenders - 1)
+    try:
+        for i in range(rounds):  # 30-minute slots on one open Monday (2030-01-14)
+            start = at(4, 0, day=14) + timedelta(minutes=30 * i)
+            assert sorted(run_round(start)) == ["booked"] + ["taken"] * (contenders - 1)
+        assert errors == []  # no 500-style failures (e.g. an unhandled deadlock)
     finally:
         setup.execute("delete from auth.users where id = any(%s)", (users,))  # cascades
         setup.close()
