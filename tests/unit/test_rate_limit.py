@@ -1,3 +1,4 @@
+import contextlib
 import threading
 import uuid
 
@@ -106,10 +107,8 @@ def test_idle_keys_are_evicted_so_memory_stays_bounded() -> None:
 
     clock.now += 61
     for _ in range(256):  # a sweep runs every 256 calls
-        try:
+        with contextlib.suppress(RateLimitedError):
             rl.check("someone-new")
-        except RateLimitedError:
-            pass
 
     assert rl.tracked_keys() == 1
 
