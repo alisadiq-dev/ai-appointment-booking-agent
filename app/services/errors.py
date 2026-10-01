@@ -67,3 +67,14 @@ class CalendarEventMissingError(AppError):
 
 class CalendarEventNotFoundError(Exception):
     """The calendar has no (live) event with that id, e.g. it was deleted by hand."""
+
+
+class TurnInProgressError(AppError):
+    """Another chat message from the same user is still being processed."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "turn_in_progress",
+            "Your previous message is still being processed. Please wait a moment and try again.",
+            409,
+        )

@@ -1,9 +1,10 @@
 """Request and response models for the HTTP API."""
 
 from datetime import date, datetime
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict
+from pydantic import AwareDatetime, BaseModel, ConfigDict, StringConstraints
 
 from app.schemas.bookings import BookingStatus
 from app.schemas.business_hours import BusinessHour
@@ -49,3 +50,20 @@ class AvailabilityOut(BaseModel):
 class BusinessHoursOut(BaseModel):
     timezone: str
     hours: list[BusinessHour]
+
+
+MAX_CHAT_MESSAGE_CHARS = 1000
+
+
+class ChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Trimmed first, so whitespace alone is empty and padding cannot be used to dodge the limit.
+    message: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_CHAT_MESSAGE_CHARS),
+    ]
+
+
+class ChatResponse(BaseModel):
+    reply: str

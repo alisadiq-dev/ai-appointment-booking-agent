@@ -10,8 +10,12 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg_pool import PoolTimeout
 
+from app.agents.gemini import build_language_model
+from app.agents.graph import BookingAgent
+from app.agents.model import LanguageModel
 from app.core.config import Settings, get_settings
 from app.core.errors import DatabaseUnavailableError
+from app.core.rate_limit import SlidingWindowRateLimiter
 from app.core.security import AuthUnavailableError, AuthUser, TokenVerifier, UnauthorizedError
 from app.integrations.google_calendar import GoogleCalendar
 from app.integrations.null_calendar import NullCalendar
@@ -20,8 +24,10 @@ from app.repositories.bookings import BookingRepository
 from app.repositories.business_hours import BusinessHoursRepository
 from app.repositories.profiles import ProfileRepository
 from app.repositories.services import ServiceRepository
+from app.repositories.sessions import SessionRepository
 from app.repositories.types import Conn
 from app.services.booking_service import BookingService
+from app.services.errors import TurnInProgressError
 from app.services.ports import CalendarPort
 
 logger = logging.getLogger(__name__)
@@ -117,3 +123,59 @@ def get_booking_service(
 
 
 BookingServiceDep = Annotated[BookingService, Depends(get_booking_service)]
+
+
+# ------------------------------------------------------------------ chat
+
+
+@lru_cache
+def get_chat_rate_limiter() -> SlidingWindowRateLimiter:
+    """One limiter for the whole process. In memory, so the limit is per instance."""
+    settings = get_settings()
+    return SlidingWindowRateLimiter(
+        limit=settings.chat_rate_limit_requests,
+        window_seconds=settings.chat_rate_limit_window_seconds,
+    )
+
+
+def rate_limited_user(
+    user: CurrentUser,
+    limiter: Annotated[SlidingWindowRateLimiter, Depends(get_chat_rate_limiter)],
+) -> AuthUser:
+    """The authenticated user, after their chat budget is charged. Keyed by the JWT user id (never
+    the IP), and only reached once the token is valid, so anonymous traffic cannot spend a user's
+    budget. Runs before the database connection and the model call are set up."""
+    limiter.check(str(user.id))
+    return user
+
+
+ChatUser = Annotated[AuthUser, Depends(rate_limited_user)]
+
+
+@lru_cache
+def get_language_model() -> LanguageModel:
+    return build_language_model(get_settings())
+
+
+def get_chat_agent(
+    user: ChatUser,
+    conn: DbConn,
+    service: BookingServiceDep,
+    model: Annotated[LanguageModel, Depends(get_language_model)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> BookingAgent:
+    """The agent for one chat turn, on this request's single database transaction.
+
+    Everything the turn writes (bookings and the saved session) shares that transaction, which
+    commits only if the turn succeeds. The per-user lock fails fast instead of waiting, so a second
+    simultaneous message from the same user never holds another pooled connection.
+    """
+    sessions = SessionRepository(conn)
+    if not sessions.try_lock_turn(user.id):
+        raise TurnInProgressError
+    return BookingAgent(
+        bookings=service, model=model, sessions=sessions, zone=settings.business_zone
+    )
+
+
+ChatAgentDep = Annotated[BookingAgent, Depends(get_chat_agent)]
