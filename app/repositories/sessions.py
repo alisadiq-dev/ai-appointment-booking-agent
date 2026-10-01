@@ -4,6 +4,11 @@ from uuid import UUID
 
 from app.repositories.types import Conn
 
+# First key of the two-key advisory lock that serializes one user's chat turns. The booking write
+# lock uses the single-key form (BOOKING_WRITE_LOCK_KEY); Postgres keeps the two forms in separate
+# lock spaces, and this namespace differs from that key as well, so they can never collide.
+CHAT_TURN_LOCK_NAMESPACE = 6_117_002
+
 
 class SessionRepository:
     """conversation_sessions: one row per user. Always filters by user_id (the backend role
@@ -33,3 +38,18 @@ class SessionRepository:
         self._conn.execute(
             "delete from public.conversation_sessions where user_id = %s", (user_id,)
         )
+
+    def try_lock_turn(self, user_id: UUID) -> bool:
+        """Take this user's chat-turn lock for the rest of the current transaction, without
+        waiting. False means another turn of the same user is already running.
+
+        Transaction-scoped: released automatically on commit or rollback, so a crashed request
+        can never leave a user locked out. Two users whose ids share the first 4 bytes would
+        share a lock, which only costs a spurious "turn in progress".
+        """
+        second_key = int.from_bytes(user_id.bytes[:4], "big", signed=True)
+        row = self._conn.execute(
+            "select pg_try_advisory_xact_lock(%s::int, %s::int) as locked",
+            (CHAT_TURN_LOCK_NAMESPACE, second_key),
+        ).fetchone()
+        return bool(row and row["locked"])
