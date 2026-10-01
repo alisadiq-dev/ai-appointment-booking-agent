@@ -70,9 +70,9 @@ jobs:
       - uses: astral-sh/setup-uv@v10.2.0
       # Runtime dependencies only (what ships in the image), pinned and hashed from uv.lock.
       - run: uv export --no-dev --no-emit-project --format requirements-txt -o requirements-audit.txt
-      - uses: pypa/gh-action-pip-audit@v1.1.0
-        with:
-          inputs: requirements-audit.txt
+      # --disable-pip: audit the hashed file as is, without building an environment (the pypa
+      # action does that and failed once on a transient pip upgrade error).
+      - run: uvx pip-audit==2.10.1 --disable-pip --require-hashes -r requirements-audit.txt
 
   docker:
     name: Docker image builds and starts
