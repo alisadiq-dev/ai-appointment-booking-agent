@@ -37,21 +37,52 @@ dashboard. Five is enough for the app because one chat request holds one connect
 turn, and the per-user turn lock and rate limit bound the concurrency. If the compute size changes,
 re-check the pool size before raising `DB_POOL_MAX_SIZE`.
 
-## Environment variables (Render dashboard only, never in git)
+## Environment variables
+
+Set in [render.yaml](../render.yaml) (not secret, committed):
 
 | Variable | Value |
 |---|---|
 | `APP_ENV` | `production` |
-| `SUPABASE_URL` | `https://<project-ref>.supabase.co` |
-| `DATABASE_URL` | session pooler string (secret) |
+| `LOG_LEVEL` | `INFO` |
+| `SUPABASE_URL` | `https://dhovoboznckrknphwpir.supabase.co` |
+| `BUSINESS_TIMEZONE` | `Asia/Karachi` |
 | `DB_POOL_MAX_SIZE` | `5` |
-| `BUSINESS_TIMEZONE` | `Asia/Karachi` (or your zone) |
-| `CALENDAR_ENABLED` | **`true`** (the app refuses to start without the two values below) |
-| `GOOGLE_CALENDAR_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON` | see [google-calendar.md](google-calendar.md) (secret) |
-| `GEMINI_API_KEY` | Google AI Studio key (secret; without it the agent only sends the fallback reply) |
+| `CALENDAR_ENABLED` | **`true`** (the app refuses to start without the two Google values) |
 
-`render.yaml` lists the secrets with `sync: false`, so Render asks for their values in the
-dashboard on first creation and they never enter the repository.
+Entered **by hand in the Render dashboard** (`sync: false` in the blueprint, so they never enter
+the repository):
+
+| Variable | What it is |
+|---|---|
+| `DATABASE_URL` | Session pooler string with `?sslmode=require` (see above) |
+| `GOOGLE_CALENDAR_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON` | see [google-calendar.md](google-calendar.md) |
+| `GEMINI_API_KEY` | Google AI Studio key (without it the agent only sends the fallback reply) |
+
+`PORT` is set by Render; the Dockerfile reads it.
+
+## First deploy, in order
+
+1. Merge the PR that contains `render.yaml` and the workflows (a blueprint is read from the
+   branch you pick, and manual workflows are listed only from `main`).
+2. **Migrations**: Actions tab, **Production migrations**, Run workflow with `dry_run` ticked,
+   check the list (7 migrations), run again with `dry_run` **unticked** and `include_seed`
+   **ticked** (the seed is repeat safe). A permission error here means the access token scope
+   needs a look; do not widen it blindly.
+3. Create the demo users in the Supabase dashboard (after the migrations, see below).
+4. **Render**: *New, Blueprint*, connect the repo, branch `main`, enter the four secrets, Apply.
+5. Verify `https://<service>.onrender.com/health` and `/docs`, then a real chat turn with a demo
+   token. Confirm HTTPS, then add HSTS (tasks.md).
+
+## Production migrations workflow
+
+`.github/workflows/migrate-production.yml` is manual only. It links the hosted project and runs
+`supabase db push` (dry run by default). It needs the repository secrets
+`SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD` and `SUPABASE_PROJECT_ID`. The access token is a
+project-scoped token (Read-only preset, Migrations: Write) that **expires after 90 days**
+(created 2026-10-01, so around 2026-12-30): create a new one and replace the secret before then.
+The workflow writes an empty `supabase/signing_keys.json` first, because every CLI command loads
+`config.toml`, which names that file; the placeholder is never used against production.
 
 ## Hosted Supabase checklist
 

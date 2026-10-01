@@ -1,0 +1,40 @@
+# Render Blueprint: one free Docker web service. Docs: docs/deploy.md
+services:
+  - type: web
+    name: ai-appointment-booking-agent
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: singapore
+    # The chat rate limiter is in memory and per instance: exactly one instance (the free plan's
+    # maximum anyway). Do not raise this without a shared limiter, see docs/chat-api.md.
+    numInstances: 1
+    healthCheckPath: /health
+    # Deploy only after the GitHub checks for the commit pass (CI workflow). Render does not
+    # deploy a commit that has no checks.
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: SUPABASE_URL
+        value: https://dhovoboznckrknphwpir.supabase.co
+      - key: BUSINESS_TIMEZONE
+        value: Asia/Karachi
+      # Free session pooler allows 15 backend connections: 5 here leaves room for a deploy overlap
+      # and for migrations (docs/deploy.md).
+      - key: DB_POOL_MAX_SIZE
+        value: "5"
+      # Must be true in production; the app refuses to start without the two Google values.
+      - key: CALENDAR_ENABLED
+        value: "true"
+      # Secrets: values are entered in the Render dashboard, never committed.
+      - key: DATABASE_URL
+        sync: false
+      - key: GOOGLE_CALENDAR_ID
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
