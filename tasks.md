@@ -25,7 +25,7 @@ Decisions (approved): JWKS only (ES256/RS256, never HS256). Token `role` claim i
 - [x] Validate Supabase JWT (`core/security.py`), JWKS key provider (`integrations/supabase_jwks.py`), `get_current_user` dependency (`api/deps.py`)
 - [x] Tests: valid, expired, missing, malformed, wrong issuer/audience/signature, alg=none, HS256 key confusion, unknown kid, JWKS down/slow/garbage
 - [x] Local asymmetric signing verified with a real GoTrue token (opt-in `pytest -m local_supabase`); setup in docs/local-supabase.md
-- Follow-up (Phase 7): reject anonymous-sign-in tokens (`is_anonymous` claim) if anonymous sign-ins are ever enabled
+- [x] (Phase 7) Anonymous-sign-in tokens (`is_anonymous` claim) are rejected
 
 ## Phase 3: Core booking service (no AI)
 Decisions (approved): `BUSINESS_TIMEZONE` default Asia/Karachi (DST proven with Europe/London tests); 15-minute slot grid; psycopg 3 sync + pool; thin routers in this phase; cancel is `POST /bookings/{id}/cancel` (row kept), reschedule is `PATCH /bookings/{id}`; only own, confirmed, future bookings can be changed; cancelled bookings return 409 `booking_not_active` on both cancel and reschedule.
@@ -35,7 +35,7 @@ Decisions (approved): `BUSINESS_TIMEZONE` default Asia/Karachi (DST proven with 
 - [x] Thin routers: GET /services, /business-hours, /availability; POST/GET /bookings; PATCH /bookings/{id}; POST /bookings/{id}/cancel; GET /admin/bookings
 - [x] Concurrency: advisory lock + deadlock retry; race test (6 threads x 8 rounds) passes with 0 deadlocks; DB connection scope="function" so commits happen before the response
 - Follow-up (Phase 4): Google Calendar sync hooks into create/reschedule/cancel and fills `google_event_id`
-- Follow-up (Phase 7): 404/405 from unknown routes still use FastAPI's default body, not the standard error format
+- [x] (Phase 7) 404/405 now use the standard error format
 
 ## Phase 4: Google Calendar integration
 Decisions (approved): service account (calendar shared to it), no OAuth user flow. Strict consistency (a Google failure makes create, reschedule or cancel fail with 503 and roll back). Availability fails closed with 503. Event title `"<service> - <customer name>"`, booking id in description and private extended properties, no email or phone. All-day events block the whole day, read in `BUSINESS_TIMEZONE`.
@@ -45,7 +45,7 @@ Decisions (approved): service account (calendar shared to it), no OAuth user flo
 - [x] Tests: `singleEvents=true` (recurring expanded), `nextPageToken` paging, all-day dates read in the business timezone (Karachi, Los Angeles, a London DST day), Google failures roll back over HTTP against real Postgres
 - [x] `FakeCalendar` for tests, `NullCalendar` when `CALENDAR_ENABLED=false`; startup builds the Google client (a bad key stops startup) or warns that sync is off
 - Known limit: a failed database commit after Google accepted a create leaves an orphan event (carries the booking id in private properties)
-- Follow-up (Phase 7): a reconciliation script for orphan events, if wanted
+- Decided in Phase 7: no reconciliation script (documented as a known limit in docs/security.md)
 
 ## Phase 5: LangGraph agent
 Decisions (approved): conversation state lives in our own `conversation_sessions` table (no LangGraph checkpointer), so the confirmation gate is a stored proposal, not `interrupt()`. Gemini sits behind `LanguageModel` (default `gemini-3.5-flash-lite`, `GEMINI_MODEL`); any failure or a missing key gives a fixed fallback reply and no write. The gate covers create, reschedule and cancel: only a whole-message explicit yes on the next turn (deterministic, not the model) executes; a clear no clears the proposal and asks for another time. `user_id` always comes from the JWT; the model can only pick one of the user's own bookings by list number.
@@ -70,10 +70,19 @@ Decisions (approved): per-user rate limit of 10 requests per 60 seconds, in memo
 - Known limit: a request with an invalid body (422) still counts against the rate limit and briefly takes a pooled connection and the user's turn lock (FastAPI resolves dependencies first); accepted and documented in docs/chat-api.md
 
 ## Phase 7: Hardening
-- [ ] Error handling, logging, input validation, OWASP API Top 10 review
+Decisions (approved): `/docs` stays enabled; no CORS (a future frontend needs CORS with explicit allowed origins, never `*`); no orphan-event reconciliation (known limit); admin rights come only from `profiles.role` in the database, never from a token claim.
+- [x] Standard error format for 404, 405, 413 and unhandled 500 (generic message, stack trace only in the log)
+- [x] Reject `is_anonymous` tokens (fail closed on any value other than absent or `false`)
+- [x] Test: a token with admin-looking claims but a normal profile gets 403 on `GET /admin/bookings` (checked to fail when the service check is weakened)
+- [x] Structured JSON logging, `X-Request-ID` on every response and log line, one access line per request (route template, status, duration)
+- [x] Tests: the Authorization header and chat message text never appear in log output (checked to fail when the header is deliberately logged)
+- [x] Security headers on every response; 32 KiB request body cap (413)
+- [x] Input review: found and fixed a 500 for start times at the edge of the calendar (year 1 or 9999), now 422; response fields and unknown request fields tested
+- [x] OWASP API Security Top 10 (2023) review in docs/security.md (risk, what we do, evidence, known limits)
+- Known limits (listed in docs/security.md): no cap on future bookings per user, only `/chat` is rate limited, `GET /bookings` is not paginated, no HSTS or CSP, no `/v1` prefix, no automated dependency scan (Phase 8)
 
 ## Phase 8: CI/CD
-- [ ] GitHub Actions: lint and tests
+- [ ] GitHub Actions: lint and tests; add a dependency vulnerability scan (for example `pip-audit`) and Dependabot (from docs/security.md, API9)
 - [ ] **CI must also run `supabase start` and `supabase test db`, not only pytest** (the pgTAP suite guards the overlap constraint, RLS and privileges)
 - [ ] CI runs the live Google tests only if a test calendar and key are stored as CI secrets (otherwise they are skipped without `REQUIRE_DB`); `CALENDAR_ENABLED` must be `true` in the deployed service
 - [ ] **CI sets `REQUIRE_DB=1`** plus `DATABASE_URL`, `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`, so missing configuration fails the DB-backed and real-GoTrue tests instead of skipping them (see docs/local-supabase.md)

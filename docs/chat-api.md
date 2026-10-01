@@ -25,6 +25,7 @@ after trimming; extra fields are rejected).
 | 401 | `unauthorized` | Missing or invalid token. Does not use up anyone's rate-limit budget. |
 | 409 | `turn_in_progress` | Another message from the same user is still being processed. Retry shortly. |
 | 409 | `calendar_event_missing` | The booking's Google event was deleted by hand, so it cannot be moved. See below. |
+| 413 | `payload_too_large` | The request body is over 32 KiB (the largest valid message is about 12 KB). |
 | 422 | `validation_error` | Empty, over-long, wrongly typed or extra fields. The message text is never echoed back. |
 | 429 | `rate_limited` | Over the limit. `Retry-After` gives the seconds to wait. |
 | 503 | `calendar_unavailable`, `database_unavailable`, `auth_unavailable` | Infrastructure failed. The whole turn was rolled back; repeat the message. |
