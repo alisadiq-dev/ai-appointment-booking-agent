@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3.5-flash-lite"
     gemini_timeout_seconds: float = Field(default=10, gt=0)
 
+    # Chat rate limit: per user id, in memory, PER INSTANCE (see app/core/rate_limit.py).
+    chat_rate_limit_requests: int = Field(default=10, gt=0)
+    chat_rate_limit_window_seconds: float = Field(default=60, gt=0)
+
     @model_validator(mode="after")
     def _calendar_config_is_complete(self) -> Self:
         if not self.calendar_enabled:
