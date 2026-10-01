@@ -98,6 +98,7 @@ Decisions (approved): deploy the existing Dockerfile to a free host. GCP Cloud R
 - [x] HSTS (`max-age=300`, production only) once HTTPS was confirmed on the live URL (tested; live after the next manual deploy)
 - [x] Document the single container (satisfies the in-memory chat rate limiter), the cold start (about 29 s measured) and the free-tier limits in docs/deploy.md
 - [x] Real hosted tokens verified against the hosted JWKS (ES256); live `GET /bookings` 200 for customer and admin, `GET /admin/bookings` 403 for the customer and 200 for the admin; no bookings created. Note: Cloudflare in front of SnapDeploy blocks Python's default User-Agent (403, error code 1010), so scripts must set one (docs/deploy.md)
+- [x] `.env.example` has no active assignments (SnapDeploy re-applied it over the dashboard values after each deploy); a deploy must still be followed by a check of `APP_ENV` and `CALENDAR_ENABLED`. Whether SnapDeploy ignores the commented lines is verified at the next deploy
 - [ ] Redeploy from the SnapDeploy dashboard after this PR is merged and CI is green, then check the `Strict-Transport-Security` header live
 
 ## Phase 9: Portfolio polish
