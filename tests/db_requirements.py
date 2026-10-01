@@ -1,4 +1,4 @@
-"""Environment requirements for tests that need a real database or Supabase Auth.
+"""Environment requirements for tests that need a real database, Supabase Auth or Google Calendar.
 
 By default, missing configuration skips those tests so the suite runs anywhere. With
 REQUIRE_DB=1 (set by CI) it fails them instead, so a misconfigured pipeline cannot go green
@@ -12,6 +12,7 @@ import pytest
 REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "requires_db": ("DATABASE_URL",),
     "requires_supabase_auth": ("SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY"),
+    "requires_google": ("GOOGLE_CALENDAR_ID", "GOOGLE_SERVICE_ACCOUNT_JSON"),
 }
 
 
