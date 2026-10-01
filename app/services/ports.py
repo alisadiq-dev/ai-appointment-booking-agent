@@ -21,7 +21,12 @@ class BookingRepositoryPort(Protocol):
         *,
         booking_id: UUID | None = None,
         google_event_id: str | None = None,
-    ) -> Booking: ...
+        max_active: int | None = None,
+        now: datetime | None = None,
+    ) -> Booking:
+        """Raises SlotTakenError, or ActiveBookingLimitError when the user already holds
+        `max_active` confirmed bookings starting after `now` (checked atomically with the write)."""
+        ...
 
     def get_for_user(self, booking_id: UUID, user_id: UUID) -> Booking | None: ...
 

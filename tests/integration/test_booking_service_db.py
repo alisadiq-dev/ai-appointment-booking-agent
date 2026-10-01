@@ -20,6 +20,7 @@ from app.repositories.profiles import ProfileRepository
 from app.repositories.services import ServiceRepository
 from app.services.booking_service import BookingService
 from app.services.errors import (
+    BookingLimitReachedError,
     BookingNotActiveError,
     BookingNotFoundError,
     ForbiddenError,
@@ -226,4 +227,96 @@ def test_concurrent_requests_for_one_slot_have_exactly_one_winner() -> None:
         assert errors == []  # no 500-style failures (e.g. an unhandled deadlock)
     finally:
         setup.execute("delete from auth.users where id = any(%s)", (users,))  # cascades
+        setup.close()
+
+
+# ------------------------------------------------------------- active booking limit
+
+
+def test_the_limit_is_enforced_in_sql_and_reschedule_and_cancel_still_work(conn: Conn) -> None:
+    svc = build_service(conn)
+    haircut = seeded_service_id(conn)
+    alice, bob = make_user(conn), make_user(conn)
+    mine = [svc.create_booking(alice, haircut, at(5 + i)) for i in range(3)]
+
+    with pytest.raises(BookingLimitReachedError):
+        svc.create_booking(alice, haircut, at(9))
+    assert len(svc.list_my_bookings(alice)) == 3  # the refused one left no row
+
+    moved = svc.reschedule_booking(alice, mine[0].id, at(9))  # not a new booking
+    assert moved.id == mine[0].id
+    svc.create_booking(bob, haircut, at(10))  # another user is unaffected
+    svc.cancel_booking(alice, mine[1].id)
+    assert svc.create_booking(alice, haircut, at(11)).status == "confirmed"  # a place was freed
+
+
+def test_cancelled_and_past_bookings_do_not_count_in_sql(conn: Conn) -> None:
+    svc = build_service(conn)
+    haircut = seeded_service_id(conn)
+    alice = make_user(conn)
+    for i in range(3):
+        svc.cancel_booking(alice, svc.create_booking(alice, haircut, at(5 + i)).id)
+    # a booking that has already started (inserted directly: the service refuses past times)
+    conn.execute(
+        "insert into public.bookings (user_id, service_id, start_at, end_at) "
+        "values (%s, %s, %s, %s)",
+        (
+            alice,
+            haircut,
+            datetime(2029, 12, 1, 5, tzinfo=UTC),
+            datetime(2029, 12, 1, 6, tzinfo=UTC),
+        ),
+    )
+
+    for i in range(3):
+        svc.create_booking(alice, haircut, at(5 + i, day=8))  # still room for three
+
+
+def test_concurrent_bookings_by_one_user_cannot_exceed_the_limit() -> None:
+    """Separate connections, committed data, one user booking 8 different slots at once."""
+    assert DATABASE_URL
+    attempts = 8
+    setup: psycopg.Connection[dict[str, Any]] = psycopg.connect(
+        DATABASE_URL, row_factory=dict_row, autocommit=True
+    )
+    user = make_user(setup)
+    haircut = seeded_service_id(setup)
+    barrier = threading.Barrier(attempts)
+    results: list[str] = []
+    errors: list[BaseException] = []
+
+    def attempt(i: int) -> None:
+        connection: psycopg.Connection[dict[str, Any]] = psycopg.connect(
+            DATABASE_URL, row_factory=dict_row
+        )
+        try:
+            svc = build_service(connection)
+            barrier.wait()
+            try:
+                svc.create_booking(user, haircut, at(4, 0, day=21) + timedelta(hours=i))
+                connection.commit()
+                results.append("booked")
+            except BookingLimitReachedError:
+                connection.rollback()
+                results.append("limit")
+        except BaseException as exc:
+            errors.append(exc)
+        finally:
+            connection.close()
+
+    try:
+        threads = [threading.Thread(target=attempt, args=(i,)) for i in range(attempts)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=30)
+        stored = setup.execute(
+            "select count(*) as n from public.bookings where user_id = %s", (user,)
+        ).fetchone()
+        assert errors == []
+        assert sorted(results) == ["booked"] * 3 + ["limit"] * (attempts - 3)
+        assert stored is not None
+        assert stored["n"] == 3
+    finally:
+        setup.execute("delete from auth.users where id = %s", (user,))  # cascades
         setup.close()

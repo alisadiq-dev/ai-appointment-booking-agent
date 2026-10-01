@@ -6,6 +6,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Most future, confirmed bookings one user may hold at once (REST and chat share the rule).
+DEFAULT_MAX_ACTIVE_BOOKINGS_PER_USER = 3
+
 
 class Settings(BaseSettings):
     """Application settings, read from environment variables (and a local .env in dev)."""
@@ -29,6 +32,7 @@ class Settings(BaseSettings):
 
     business_timezone: str = "Asia/Karachi"
     slot_interval_minutes: int = Field(default=15, gt=0, le=1440)
+    max_active_bookings_per_user: int = Field(default=DEFAULT_MAX_ACTIVE_BOOKINGS_PER_USER, ge=1)
 
     # Google Calendar (service account; the calendar is shared with the service account's email).
     # Secrets are SecretStr so they never appear in reprs, logs or validation errors.

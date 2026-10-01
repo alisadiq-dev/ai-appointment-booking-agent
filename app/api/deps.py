@@ -119,6 +119,7 @@ def get_booking_service(
         calendar=calendar,
         zone=settings.business_zone,
         slot_interval=timedelta(minutes=settings.slot_interval_minutes),
+        max_active_bookings=settings.max_active_bookings_per_user,
     )
 
 

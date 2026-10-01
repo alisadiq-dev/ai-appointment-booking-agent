@@ -4,7 +4,8 @@ from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from app.repositories.errors import SlotTakenError
+from app.core.config import DEFAULT_MAX_ACTIVE_BOOKINGS_PER_USER
+from app.repositories.errors import ActiveBookingLimitError, SlotTakenError
 from app.schemas.bookings import Booking
 from app.schemas.business_hours import BusinessHour
 from app.schemas.calendar import CalendarEvent
@@ -18,6 +19,7 @@ from app.services.availability import (
 )
 from app.services.errors import (
     BookingInPastError,
+    BookingLimitReachedError,
     BookingNotActiveError,
     BookingNotFoundError,
     CalendarEventMissingError,
@@ -66,7 +68,9 @@ class BookingService:
         zone: ZoneInfo,
         slot_interval: timedelta,
         clock: Callable[[], datetime] = _utc_now,
+        max_active_bookings: int = DEFAULT_MAX_ACTIVE_BOOKINGS_PER_USER,
     ) -> None:
+        self.max_active_bookings = max_active_bookings
         self._bookings = bookings
         self._services = services
         self._business_hours = business_hours
@@ -130,9 +134,13 @@ class BookingService:
                 end,
                 booking_id=booking_id,
                 google_event_id=booking_id.hex,
+                max_active=self.max_active_bookings,
+                now=self._clock(),
             )
         except SlotTakenError as exc:
             raise SlotUnavailableError from exc
+        except ActiveBookingLimitError as exc:
+            raise BookingLimitReachedError(self.max_active_bookings) from exc
         customer = self._profiles.get_full_name(user_id) or "Customer"
         self._calendar.create_event(
             CalendarEvent(
@@ -199,11 +207,15 @@ class BookingService:
 
     def _slot(self, start_at: datetime, service: Service) -> tuple[datetime, datetime]:
         """Validate a requested start for a service; returns the UTC (start, end)."""
-        start = start_at.astimezone(UTC)
-        end = start + timedelta(minutes=service.duration_minutes)
-        if start <= self._clock():
-            raise BookingInPastError
-        window = window_for_instant(start, self._business_hours.list_all(), self._zone)
+        try:
+            start = start_at.astimezone(UTC)
+            end = start + timedelta(minutes=service.duration_minutes)
+            if start <= self._clock():
+                raise BookingInPastError
+            window = window_for_instant(start, self._business_hours.list_all(), self._zone)
+        except OverflowError:
+            # Instants at the very edge of the calendar (year 1 or 9999): never a real booking.
+            raise OutsideBusinessHoursError from None
         if window is None or start < window.start or end > window.end:
             raise OutsideBusinessHoursError
         if not is_aligned(start, window, self._interval):

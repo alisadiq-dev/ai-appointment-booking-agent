@@ -23,6 +23,16 @@ class BookingNotActiveError(AppError):
         super().__init__("booking_not_active", "This booking is no longer active.", 409)
 
 
+class BookingLimitReachedError(AppError):
+    def __init__(self, limit: int) -> None:
+        super().__init__(
+            "booking_limit_reached",
+            f"You already have the maximum of {limit} upcoming bookings. "
+            "Cancel or move one before booking another.",
+            409,
+        )
+
+
 class BookingInPastError(AppError):
     def __init__(self, message: str = "Start time must be in the future.") -> None:
         super().__init__("booking_in_past", message, 422)

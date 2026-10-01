@@ -438,3 +438,30 @@ def test_admin_pagination_limits_results(client: TestClient) -> None:
     response = client.get("/admin/bookings?limit=1", headers=as_user(ADMIN))
 
     assert len(response.json()) == 1
+
+
+# --------------------------------------------------------------- active booking limit
+
+
+def test_the_fourth_active_booking_is_409_in_the_standard_format(client: TestClient) -> None:
+    for hour in (5, 6, 7):
+        assert create(client, ALICE, monday(hour)).status_code == 201
+
+    response = create(client, ALICE, monday(8))
+
+    assert response.status_code == 409
+    assert error_of(response)["code"] == "booking_limit_reached"
+    assert len(client.get("/bookings", headers=as_user(ALICE)).json()) == 3
+
+
+def test_the_limit_does_not_affect_other_users_or_rescheduling(client: TestClient) -> None:
+    ids = [create(client, ALICE, monday(hour)).json()["id"] for hour in (5, 6, 7)]
+
+    assert create(client, BOB, monday(8)).status_code == 201  # someone else is unaffected
+    moved = client.patch(
+        f"/bookings/{ids[0]}", json={"start_at": monday(9)}, headers=as_user(ALICE)
+    )
+    assert moved.status_code == 200  # reschedule is not a new booking
+    cancelled = client.post(f"/bookings/{ids[1]}/cancel", headers=as_user(ALICE))
+    assert cancelled.status_code == 200
+    assert create(client, ALICE, monday(10)).status_code == 201  # a place was freed

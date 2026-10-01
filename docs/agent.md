@@ -103,3 +103,4 @@ uv run pytest tests/integration/test_agent_db.py tests/integration/test_session_
 - One conversation per user (the table has one row per user).
 - The agent asks one question per turn; it does not handle several bookings in one message.
 - Free-time lists show the first 8 slots of a day.
+- A customer who already holds the maximum number of upcoming bookings (`MAX_ACTIVE_BOOKINGS_PER_USER`, default 3) is told so before any details are asked, and again at execute time if the limit was reached meanwhile; nothing is written. Rescheduling and cancelling still work.

@@ -30,6 +30,10 @@ class UnauthorizedError(AppError):
         )
 
 
+class _AnonymousTokenError(ValueError):
+    """An anonymous sign-in token. Internal: only its name reaches the log, never the caller."""
+
+
 class AuthUnavailableError(AppError):
     """Tokens cannot be verified right now (e.g. JWKS endpoint down). Fails closed."""
 
@@ -80,6 +84,11 @@ class TokenVerifier:
                 leeway=CLOCK_SKEW_LEEWAY_SECONDS,
                 options={"require": REQUIRED_CLAIMS},
             )
+            # Anonymous sign-ins (Supabase) mint valid, signed tokens for users who are not real
+            # customers. Fail closed: anything other than an absent claim or a literal false.
+            is_anonymous = claims.get("is_anonymous")
+            if is_anonymous is not None and is_anonymous is not False:
+                raise _AnonymousTokenError
             return AuthUser(id=UUID(claims["sub"]))
         except (jwt.PyJWTError, ValueError, TypeError, AttributeError) as exc:
             # Log the reason for operators; never tell the caller why.
