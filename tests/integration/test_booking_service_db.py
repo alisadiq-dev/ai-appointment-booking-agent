@@ -223,8 +223,13 @@ def test_concurrent_requests_for_one_slot_have_exactly_one_winner() -> None:
     try:
         for i in range(rounds):  # 30-minute slots on one open Monday (2030-01-14)
             start = at(4, 0, day=14) + timedelta(minutes=30 * i)
-            assert sorted(run_round(start)) == ["booked"] + ["taken"] * (contenders - 1)
-        assert errors == []  # no 500-style failures (e.g. an unhandled deadlock)
+            results = sorted(run_round(start))
+            # errors first: a thread that raised leaves no result, and its exception is the cause
+            assert errors == [], f"round {i}: unhandled error in a contender: {errors!r}"
+            assert results == ["booked"] + ["taken"] * (contenders - 1), f"round {i}: {results}"
+            # Start the next round clean: otherwise whoever keeps winning reaches the per-user
+            # booking limit (MAX_ACTIVE_BOOKINGS_PER_USER) and that, not the slot, rejects them.
+            setup.execute("delete from public.bookings where user_id = any(%s)", (users,))
     finally:
         setup.execute("delete from auth.users where id = any(%s)", (users,))  # cascades
         setup.close()
