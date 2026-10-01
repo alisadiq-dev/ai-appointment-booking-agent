@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     calendar_timeout_seconds: float = Field(default=10, gt=0)
     calendar_num_retries: int = Field(default=3, ge=0, le=8)
 
+    # Gemini (language model for the booking agent). Without a key the agent answers with a safe
+    # fallback message and never books.
+    gemini_api_key: SecretStr | None = None
+    gemini_model: str = "gemini-3.5-flash-lite"
+    gemini_timeout_seconds: float = Field(default=10, gt=0)
+
     @model_validator(mode="after")
     def _calendar_config_is_complete(self) -> Self:
         if not self.calendar_enabled:
