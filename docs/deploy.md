@@ -93,7 +93,22 @@ The set is 10 variables in total (6 plus 4 secrets).
 - `GET /` returns the standard `not_found` error body; `GET /bookings` without a token returns
   the standard 401 body.
 - Responses carry the security headers; HSTS (below) is added by this change and is visible
-  after the next deploy.
+  after the next manual deploy.
+- **Real tokens, hosted JWKS** (password grant for the two hand-made users, nothing printed but
+  codes and counts): both sign-ins return 200 with an ES256 token (`aud=authenticated`,
+  `is_anonymous=false`, one hour lifetime). The app's own verifier accepts both against the hosted
+  JWKS, and the live API accepts them too.
+- `GET /bookings`: 200 with 0 items for the customer and for the admin (this also proves the
+  container reaches the database through the session pooler).
+- `GET /admin/bookings`: **403 `forbidden` for the customer, 200 for the admin**. Admin rights
+  come only from `profiles.role`; the token's `role` claim is `authenticated` for both.
+- No bookings were created in production.
+
+**Cloudflare quirk.** SnapDeploy sits behind Cloudflare, which answers `403` with
+`error code: 1010` (a plain-text body, not our error format) to requests with Python's default
+`Python-urllib` User-Agent. The same request with any normal `User-Agent` reaches the app. Any
+script that calls the live API (the Phase 9 token script, demo clients) must set a `User-Agent`;
+`curl`, browsers and Swagger are unaffected. A 403 with that plain body is the edge, not the app.
 
 ## HSTS
 
@@ -123,7 +138,7 @@ The workflow writes an empty `supabase/signing_keys.json` first, because every C
    migrations enable RLS per table and pgTAP verifies it, so automatic RLS adds nothing.
    **Verified (2026-10-01):** with the Data API disabled, `GET /auth/v1/.well-known/jwks.json`
    still answers and lists one ES256 (P-256) key, after migrating the legacy HS256 secret and
-   rotating. Verifying a real user token against it is still open (tasks.md, Phase 8).
+   rotating. A real user token was later verified against it (see Live verification).
 2. *Settings, JWT Signing Keys*: **Migrate JWT secret**, then **Rotate keys** so an ES256 or RS256
    key is active. The API verifies tokens only against
    `https://<ref>.supabase.co/auth/v1/.well-known/jwks.json`; with only the legacy secret it

@@ -97,10 +97,10 @@ Decisions (approved): deploy the existing Dockerfile to a free host. GCP Cloud R
 - [x] `EXPOSE 8080` in the Dockerfile
 - [x] HSTS (`max-age=300`, production only) once HTTPS was confirmed on the live URL (tested; live after the next manual deploy)
 - [x] Document the single container (satisfies the in-memory chat rate limiter), the cold start (about 29 s measured) and the free-tier limits in docs/deploy.md
-- [ ] Verify a real hosted user token against the JWKS and make one authenticated read as the demo user and as the admin (needs `SUPABASE_PUBLISHABLE_KEY` in the local env file)
+- [x] Real hosted tokens verified against the hosted JWKS (ES256); live `GET /bookings` 200 for customer and admin, `GET /admin/bookings` 403 for the customer and 200 for the admin; no bookings created. Note: Cloudflare in front of SnapDeploy blocks Python's default User-Agent (403, error code 1010), so scripts must set one (docs/deploy.md)
 - [ ] Redeploy from the SnapDeploy dashboard after this PR is merged and CI is green, then check the `Strict-Transport-Security` header live
 
 ## Phase 9: Portfolio polish
 - [ ] README (diagrams, setup, env vars, API examples), sample curl requests, demo script
 - [ ] README does not exist yet: include the live URL, the SnapDeploy deploy notes (free tier, cold start of about 30 s, manual deploys after CI is green) and a pointer to docs/deploy.md
-- [ ] Demo token script: password grant for a hand-made demo user (sign-ups are closed in production), credentials from a local secrets file, prints only the access token (see docs/deploy.md)
+- [ ] Demo token script: password grant for a hand-made demo user (sign-ups are closed in production), credentials from a local secrets file, sends `apikey` (publishable key) and a normal `User-Agent` (Cloudflare blocks the Python default), prints only the access token (see docs/deploy.md)
