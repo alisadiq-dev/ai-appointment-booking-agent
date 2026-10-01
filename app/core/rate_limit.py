@@ -2,8 +2,8 @@
 
 PER INSTANCE: the counters live in this process's memory. Two server instances each keep their
 own counters, so with N instances a user could send up to N times the limit. The deployment
-therefore runs a single instance (Render's free plan allows exactly one, see docs/deploy.md).
-Counters are lost on restart and on spin-down.
+therefore runs a single instance (the SnapDeploy free tier is one container, see docs/deploy.md).
+Counters are lost on restart and when the container sleeps.
 """
 
 import math

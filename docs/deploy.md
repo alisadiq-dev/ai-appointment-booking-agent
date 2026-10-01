@@ -1,30 +1,35 @@
-# Deployment (Render free plan + hosted Supabase)
+# Deployment (SnapDeploy free container + hosted Supabase)
 
-The API runs as a Docker web service on **Render's free plan** (region Singapore), built from the
-repo's `Dockerfile`. The database and auth are a **hosted Supabase free project** (Singapore).
-Render deploys automatically, but only after the GitHub checks on `main` pass
-(auto-deploy **After CI Checks Pass**, `autoDeployTrigger: checksPass` in `render.yaml`).
+The API runs as a Docker container on **SnapDeploy's free tier**, built from the repo's
+`Dockerfile`. Live URL: <https://ai-booking-agent-68b73.containers.snapdeploy.app> (note `.app`).
+The database and auth are a **hosted Supabase free project** (Singapore).
 
-> **`render.yaml` documents the intended configuration, but the service was created manually in
-> the Render dashboard**, because Render requires a payment method to create a Blueprint (the
-> free web service itself does not). The blueprint is therefore **not synced**: changing
-> `render.yaml` changes nothing on Render. Every setting below has to be changed in the
-> dashboard too, and the two should be kept identical by hand.
+**Why not Render or Cloud Run.** The plan was GCP Cloud Run, then Render's free web service.
+Cloud Run needed a billing account and Render asked for a card even for the free web service.
+SnapDeploy is free with no card. (`render.yaml` was removed; it was never used.)
 
-## What the free plan means for this app
+**Deploys are manual.** Auto Deploy on Push is **off**. After CI is green on `main`, open the
+SnapDeploy dashboard and deploy from there. Nothing deploys by itself, so a red or missing CI
+run can never reach production unless someone deploys it by hand: check the green tick first.
 
-| Limit (Render free) | Effect here |
+## What the free tier means for this app
+
+| Limit (SnapDeploy free) | Effect here |
 |---|---|
-| **One instance only** | Satisfies the in-memory chat rate limiter ([chat-api.md](chat-api.md)): one process, one set of counters. `numInstances` stays 1. Do not move to a paid multi-instance plan without a shared limiter (for example Redis). |
-| **Spins down after 15 minutes without inbound traffic** | The next request is a **cold start**: about one minute before the service answers. Clients should expect a slow first call after idle. We deliberately do not run a keep-alive ping (it would burn nearly all of the monthly hours). |
-| Restart or spin-down | All in-memory state is lost: the rate-limit counters reset. Bookings and chat sessions are safe, they live in Postgres. |
-| 750 free instance hours per month | Enough for one always-reachable service; exceeding it suspends the service until the next month. |
-| Ephemeral filesystem, no SSH or shell | The app writes nothing to disk. Logs go to stdout as JSON (see Render's log view). |
+| **Small container: 512 MB, 0.25 vCPU**, one container | One process, so the in-memory chat rate limiter ([chat-api.md](chat-api.md)) has one set of counters. Do not run a second container without a shared limiter (for example Redis). |
+| **Sleeps after 15 idle minutes** | The next request is a **cold start**: the first `/health` after sleep took about 29 seconds (2026-10-01), so clients should expect a slow first call. We deliberately run no keep-alive ping, because it would use up the free hours. |
+| **100 free hours** | Check in the dashboard how they are counted and when they reset; a sleeping container should not use them. |
+| Restart or sleep | All in-memory state is lost: the rate-limit counters reset. Bookings and chat sessions are safe, they live in Postgres. |
+| Port 8080 | Set in the dashboard; the Dockerfile `EXPOSE`s 8080 and listens on `$PORT`, defaulting to 8080. |
+| No shell access assumed | The app writes nothing to disk. Logs go to stdout as JSON (SnapDeploy's log view). |
+
+The small CPU share is also why the 15-minute wake-up is slow: the container starts Python, builds
+the Google client and opens the database pool before it answers.
 
 ## Database connection: session pooler, pool size 5
 
-Render cannot reach Supabase's direct host (`db.<ref>.supabase.co`, IPv6 only). Use the **Session
-pooler** string from the dashboard's *Connect* dialog: host `aws-<n>-<region>.pooler.supabase.com`,
+Supabase's direct host (`db.<ref>.supabase.co`) is IPv6 only, which free container hosts often
+cannot reach, so the app uses the IPv4 **Session pooler**: use the string string from the Supabase dashboard's *Connect* dialog: host `aws-<n>-<region>.pooler.supabase.com`,
 port **5432**, user `postgres.<project-ref>`. Do not build the host by hand, copy it.
 Append `?sslmode=require`.
 
@@ -45,8 +50,7 @@ re-check the pool size before raising `DB_POOL_MAX_SIZE`.
 
 ## Environment variables
 
-Listed in [render.yaml](../render.yaml) (not secret, committed). Because the service was created
-manually, **enter these in the dashboard yourself**:
+Not secret. Entered in the SnapDeploy dashboard:
 
 | Variable | Value |
 |---|---|
@@ -57,8 +61,7 @@ manually, **enter these in the dashboard yourself**:
 | `DB_POOL_MAX_SIZE` | `5` |
 | `CALENDAR_ENABLED` | **`true`** (the app refuses to start without the two Google values) |
 
-Secrets (`sync: false` in the blueprint, so they never enter the repository), also entered in the
-dashboard:
+Secrets, also entered in the dashboard only (never in git):
 
 | Variable | What it is |
 |---|---|
@@ -66,39 +69,39 @@ dashboard:
 | `GOOGLE_CALENDAR_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON` | see [google-calendar.md](google-calendar.md) |
 | `GEMINI_API_KEY` | Google AI Studio key (without it the agent only sends the fallback reply) |
 
-`PORT` is set by Render; the Dockerfile reads it.
+Port 8080 is set in the dashboard; the Dockerfile also defaults to 8080.
 
-## Service settings entered by hand
-
-| Dashboard field | Value |
-|---|---|
-| Source | the GitHub repo `alisadiq-dev/ai-appointment-booking-agent` |
-| Name | `ai-appointment-booking-agent` |
-| Language / runtime | **Docker** |
-| Branch | `main` |
-| Region | **Singapore** |
-| Root directory | empty |
-| Dockerfile path | `./Dockerfile` (the default) |
-| Docker build context | `.` (the default) |
-| Docker command | empty (the Dockerfile's `CMD` starts uvicorn on `$PORT`) |
-| Instance type | **Free** (this also fixes the instance count at 1) |
-| Health check path (Advanced) | `/health` |
-| Auto-Deploy (Advanced) | **After CI Checks Pass** |
-| Environment variables | the two tables above |
+The set is 10 variables in total (6 plus 4 secrets).
 
 ## First deploy, in order
 
-1. Merge the PR that contains `render.yaml` and the workflows (a blueprint is read from the
-   branch you pick, and manual workflows are listed only from `main`).
-2. **Migrations**: Actions tab, **Production migrations**, Run workflow with `dry_run` ticked,
-   check the list (7 migrations), run again with `dry_run` **unticked** and `include_seed`
-   **ticked** (the seed is repeat safe). A permission error here means the access token scope
-   needs a look; do not widen it blindly.
-3. Create the demo users in the Supabase dashboard (after the migrations, see below).
-4. **Render**: *New, Web Service* (Blueprints need a payment method, see the note at the top),
-   with the settings from the next section.
-5. Verify `https://<service>.onrender.com/health` and `/docs`, then a real chat turn with a demo
-   token. Confirm HTTPS, then add HSTS (tasks.md).
+1. **Migrations**: Actions tab, **Production migrations**, Run workflow with `dry_run` ticked,
+   check the list (7 migrations), then again with `dry_run` **unticked** and `include_seed`
+   **ticked** (the seed is repeat safe). Done 2026-10-01, verified read-only afterwards: 5 public
+   tables, RLS on all, `anon` has no privileges, 4 services and 7 business-hour rows.
+2. Create the demo users (after the migrations, see the Supabase checklist). Done: one customer,
+   one admin (`profiles.role` set by hand in the SQL editor).
+3. **SnapDeploy**: create the container from the GitHub repo (`main`, the `Dockerfile`), port 8080,
+   the 10 environment variables above, Auto Deploy on Push **off**. The first build log confirmed
+   that the `RUN --mount=type=cache` line in the Dockerfile works there.
+4. Verify `GET /health`, `/docs`, and a real token (see Live verification).
+
+## Live verification (2026-10-01)
+
+- `GET /health` answers `{"status":"ok"}` (the first call after sleep took about 29 s) and
+  `/docs` and `/openapi.json` answer 200.
+- `GET /` returns the standard `not_found` error body; `GET /bookings` without a token returns
+  the standard 401 body.
+- Responses carry the security headers; HSTS (below) is added by this change and is visible
+  after the next deploy.
+
+## HSTS
+
+The app sends `Strict-Transport-Security: max-age=300` on every response when `APP_ENV=production`
+(`app/core/hardening.py`). HTTPS is confirmed on the live URL, which is served through the host's
+proxy; the header is ignored by browsers over plain HTTP. It is deliberately short, with no
+`includeSubDomains` and no `preload`, because browsers cache it and a mistake must expire quickly.
+Raise `HSTS_VALUE` in steps (a day, a week, a month) once nothing breaks.
 
 ## Production migrations workflow
 
@@ -172,5 +175,6 @@ Locally the same tests run with `uv run pytest -m "live_google or live_gemini"` 
 
 ## Rollback
 
-Render keeps previous deploys: *Events, Rollback* in the dashboard redeploys the last good image.
-Migrations are forward-only; ship a new migration to undo schema changes.
+Deploys are manual, so a rollback is deploying the previous good commit from the SnapDeploy
+dashboard (check there for a one-click rollback; not verified). Migrations are forward-only; ship a
+new migration to undo schema changes.

@@ -74,7 +74,7 @@ register accounts to get around the per-user limits in API4 and API6), "Confirm 
 identity linking off, the Email provider enabled (for the hand-made demo users), Auth rate limits
 at the defaults. Demo tokens come from a password-grant script that prints only the
 access token (see [deploy.md](deploy.md)); its credentials live in a local env file outside the
-repo, never in git, Render or GitHub.
+repo, never in git, the hosting dashboard or GitHub.
 
 **Gap / known limit.** There is no brute-force protection on login: login is Supabase's, not ours.
 Configure Supabase Auth rate limits and keep anonymous sign-ins disabled in the project. We have
@@ -125,9 +125,9 @@ per-user budgets, limit checked before the database), `integration/test_api_chat
 `integration/test_api_bookings.py::test_admin_pagination_is_validated`.
 
 **Gap / known limit.** The rate limiter is in memory, so it is **per instance** and resets on a
-restart; the Render free plan runs exactly one instance (see [deploy.md](deploy.md)). Only `/chat` is rate limited: the booking routes are
+restart; the SnapDeploy free tier runs one container (see [deploy.md](deploy.md)). Only `/chat` is rate limited: the booking routes are
 cheap and authenticated but not limited per user. `GET /bookings` returns all of the caller's own
-bookings without pagination. The app caps request bodies at 32 KiB itself. Render's free plan cannot scale past one instance,
+bookings without pagination. The app caps request bodies at 32 KiB itself. The free tier is one small container,
 so there is no runaway scaling cost to alert on.
 
 ## API5: Broken function level authorization
@@ -251,8 +251,9 @@ access line, **`test_authorization_header_never_appears_in_the_logs_*`**,
 were checked to fail when the header is deliberately logged); `unit/test_logging.py` (one JSON
 object per line, newline forging); `unit/test_config.py`; pgTAP `001_anon_has_no_privileges.sql`.
 
-**Gap / known limit.** No HSTS header yet: TLS is terminated by Render in front of the app. Phase 8 adds it
-once HTTPS is confirmed on the live URL. No Content-Security-Policy (the API serves JSON, and the Swagger UI
+**Gap / known limit.** HSTS is sent in production only, with a deliberately short `max-age=300` (no `includeSubDomains`,
+no `preload`); TLS is terminated by the host's proxy in front of the app and the value is raised
+in steps (see deploy.md). No Content-Security-Policy (the API serves JSON, and the Swagger UI
 page loads assets from a CDN, so a strict policy would break `/docs`).
 
 ## API9: Improper inventory management
@@ -302,6 +303,6 @@ validation), but it can still produce a silly reply. Confirmation words are Engl
 - **Orphan calendar events.** If the database commit fails after Google accepted a create, an
   orphan event remains. It carries the booking id in its private properties. A reconciliation script
   was considered and **deliberately not built** (rare, and it would add live Google side effects).
-- The per-instance chat limiter and the single-instance Render free plan (see deploy.md).
+- The per-instance chat limiter and the single-container SnapDeploy free tier (see deploy.md).
 - Supabase's own default privileges for `supabase_admin` are not ours to change; pgTAP `001`
   fails CI if a table is ever exposed that way.

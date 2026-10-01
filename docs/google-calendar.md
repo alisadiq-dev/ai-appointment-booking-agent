@@ -109,7 +109,7 @@ says to check the sharing.
    export GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account", ...one line...}'
    ```
 
-   On Render, set the same variables as environment variables in the dashboard (see
+   On SnapDeploy, set the same variables as environment variables in the dashboard (see
    [deploy.md](deploy.md)). With `CALENDAR_ENABLED=true`, the
    app refuses to start if the id or key is missing or the key is not valid service account JSON.
 

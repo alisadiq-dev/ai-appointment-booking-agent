@@ -66,7 +66,7 @@ Decisions (approved): per-user rate limit of 10 requests per 60 seconds, in memo
 - [x] Business outcomes at execute (slot taken, booking cancelled meanwhile) are normal 200 replies (tested over HTTP)
 - [x] Input length validation at the API (1 to 1000 characters after trimming, extra fields rejected, message never echoed in errors)
 - [x] Concurrent turns for the same user: second fails fast with 409 `turn_in_progress`, first is unharmed, other users are not blocked (tested; the test fails if the lock is removed)
-- Known limit: the limiter is per instance and resets on restart (Phase 8 deploys to Render's free plan, which runs exactly one instance)
+- Known limit: the limiter is per instance and resets on restart (Phase 8 deploys to SnapDeploy's free tier, one container)
 - Known limit: a request with an invalid body (422) still counts against the rate limit and briefly takes a pooled connection and the user's turn lock (FastAPI resolves dependencies first); accepted and documented in docs/chat-api.md
 
 ## Phase 7: Hardening
@@ -83,23 +83,24 @@ Decisions (approved): `/docs` stays enabled; no CORS (a future frontend needs CO
 - Known limits (listed in docs/security.md): only `/chat` is rate limited (no limit on book/cancel cycles), `GET /bookings` is not paginated, no HSTS or CSP, no `/v1` prefix, no automated dependency scan (Phase 8)
 
 ## Phase 8: CI/CD and deployment
-Decisions (approved): deploy to Render's free web service from the existing Dockerfile (no GCP billing account available), region Singapore, auto-deploy only after CI passes (`autoDeployTrigger: checksPass`). Production database is a hosted Supabase free project (Singapore), reached through the **session pooler** (IPv4, port 5432); production sets `DB_POOL_MAX_SIZE=5` so the free pooler is not exhausted. Production migrations run only from a manual workflow. No keep-alive ping: the 15-minute idle cold start is documented instead. Secrets live only in Render environment variables and GitHub repository secrets.
-- [x] GitHub Actions: lint and tests; add a dependency vulnerability scan (`pip-audit` on an exported `uv.lock`) and Dependabot for uv, github-actions and docker (from docs/security.md, API9)
-- [x] **CI must also run `supabase start` and `supabase test db`, not only pytest** (the pgTAP suite guards the overlap constraint, RLS and privileges)
-- Split decision: PR #8 delivers CI, `render.yaml` and the migrations workflow. The unticked items below (live.yml run, hosted token check, HSTS, deploy verification) follow in a second PR after the deploy.
-- [ ] Live Google and Gemini tests run only from a manual workflow (`live.yml`, `workflow_dispatch`, needs the CI secrets, fails if one is missing) so they never gate Render or spend quota on every push; `CALENDAR_ENABLED` must be `true` in the deployed service
-- [x] **CI sets `REQUIRE_DB=1`** plus `DATABASE_URL`, `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`, so missing configuration fails the DB-backed and real-GoTrue tests instead of skipping them (see docs/local-supabase.md)
-- [x] CI must create `supabase/signing_keys.json` before `supabase start` (`echo '[]' > ...` then `supabase gen signing-key --algorithm ES256 --append`; see docs/local-supabase.md) and run `pytest -m local_supabase` with `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY`
-- [x] **CI must build the Docker image and smoke-test `/health`, so it is verified before deploy**
-- [x] `render.yaml` blueprint (documents the intended config; the service is created manually in the dashboard because Blueprints need a payment method): Docker runtime, free plan, Singapore, one instance, health check `/health`, `autoDeployTrigger: checksPass`, `CALENDAR_ENABLED=true`, `DB_POOL_MAX_SIZE=5`, all secrets `sync: false`
-- [x] Manual workflow (`workflow_dispatch`) that runs `supabase link` and `supabase db push` against the hosted project
-- [x] Hosted Supabase project `dhovoboznckrknphwpir` (Singapore) created: Data API off, ES256 signing key active and served at the JWKS URL, anonymous sign-ins off, sign-ups closed, confirm email on
-- [ ] Verify a real hosted user token against the JWKS (after migrations and a hand-made demo user)
-- [ ] **Render free plan runs one instance**, which satisfies the in-memory chat rate limiter; document that, and that a restart or spin-down resets the counters. Raise the instance count only after moving the limiter to a shared store such as Redis (see docs/chat-api.md)
-- [ ] Document the cold start (spin-down after 15 idle minutes, about a minute to restart) and the free-plan limits (750 instance hours a month, ephemeral filesystem)
-- [ ] Add an HSTS header (`Strict-Transport-Security`) once HTTPS is confirmed on the Render URL (set in the app's security headers; start with a short max-age)
-- [ ] Deploy, verify /health and /docs live, run one real chat turn against production
+Decisions (approved): deploy the existing Dockerfile to a free host. GCP Cloud Run needed a billing account and Render asked for a card even for the free web service, so the service runs on **SnapDeploy's free tier** (Small container, 512 MB / 0.25 vCPU, sleeps after 15 idle minutes, 100 free hours, no card). Deploys are manual from the SnapDeploy dashboard once CI is green on `main` (Auto Deploy on Push is off). Production database is a hosted Supabase free project (Singapore), reached through the **session pooler** (IPv4, port 5432); production sets `DB_POOL_MAX_SIZE=5` so the free pooler is not exhausted. Production migrations run only from a manual workflow. No keep-alive ping: the cold start is documented instead. Secrets live only in the SnapDeploy dashboard and GitHub repository secrets.
+- [x] GitHub Actions: lint and tests; dependency vulnerability scan (`pip-audit` on an exported `uv.lock`) and Dependabot for uv, github-actions and docker (from docs/security.md, API9)
+- [x] **CI also runs `supabase start` and `supabase test db`** (the pgTAP suite guards the overlap constraint, RLS and privileges)
+- [x] **CI sets `REQUIRE_DB=1`** plus `DATABASE_URL`, `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`, so missing configuration fails the DB-backed and real-GoTrue tests instead of skipping them
+- [x] CI creates `supabase/signing_keys.json` before `supabase start` and runs `pytest -m local_supabase`
+- [x] **CI builds the Docker image, smoke-tests `/health` and checks it runs as non-root**
+- [x] Live Google and Gemini tests live in a manual workflow (`live.yml`, `workflow_dispatch`, fails if a secret is missing) so they never gate a deploy or spend quota on every push
+- [ ] Run `live.yml` once from the Actions tab (it needs the three live secrets; they exist)
+- [x] Manual production migrations workflow (`migrate-production.yml`, dry run by default); applied 2026-10-01 and verified read-only (5 tables, RLS on all, `anon` has no privileges, 4 services, 7 business-hour rows)
+- [x] Hosted Supabase project `dhovoboznckrknphwpir` (Singapore): Data API off, ES256 signing key served at the JWKS URL, anonymous sign-ins off, sign-ups closed, confirm email on; two demo users (customer and admin) created
+- [x] Deployed to SnapDeploy: https://ai-booking-agent-68b73.containers.snapdeploy.app (`/health` and `/docs` verified, `CALENDAR_ENABLED=true`, 10 environment variables); `render.yaml` removed (never used)
+- [x] `EXPOSE 8080` in the Dockerfile
+- [x] HSTS (`max-age=300`, production only) once HTTPS was confirmed on the live URL (tested; live after the next manual deploy)
+- [x] Document the single container (satisfies the in-memory chat rate limiter), the cold start (about 29 s measured) and the free-tier limits in docs/deploy.md
+- [ ] Verify a real hosted user token against the JWKS and make one authenticated read as the demo user and as the admin (needs `SUPABASE_PUBLISHABLE_KEY` in the local env file)
+- [ ] Redeploy from the SnapDeploy dashboard after this PR is merged and CI is green, then check the `Strict-Transport-Security` header live
 
 ## Phase 9: Portfolio polish
 - [ ] README (diagrams, setup, env vars, API examples), sample curl requests, demo script
+- [ ] README does not exist yet: include the live URL, the SnapDeploy deploy notes (free tier, cold start of about 30 s, manual deploys after CI is green) and a pointer to docs/deploy.md
 - [ ] Demo token script: password grant for a hand-made demo user (sign-ups are closed in production), credentials from a local secrets file, prints only the access token (see docs/deploy.md)
