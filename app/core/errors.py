@@ -81,12 +81,16 @@ async def _handle_http_exception(_: Request, exc: Exception) -> JSONResponse:
     )
 
 
-async def _handle_unexpected_error(_: Request, exc: Exception) -> JSONResponse:
+async def _handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
     # The stack trace goes to the log for operators; the caller learns nothing about the cause.
-    logger.error("unhandled error", exc_info=exc)
+    # This handler runs outside the request-context middleware (Starlette's outermost layer), so
+    # the request id is read from the request state instead of the context variable.
+    request_id = request.scope.get("state", {}).get("request_id")
+    logger.error("unhandled error", exc_info=exc, extra={"request_id": request_id})
     return JSONResponse(
         status_code=500,
         content={"error": {"code": "internal_error", "message": "An internal error occurred."}},
+        headers={"X-Request-ID": request_id} if request_id else None,
     )
 
 

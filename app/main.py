@@ -9,6 +9,8 @@ from app.api.routers import admin, bookings, catalog, chat, health
 from app.core.config import get_settings
 from app.core.db import create_pool
 from app.core.errors import register_exception_handlers
+from app.core.logging import configure_logging
+from app.core.request_context import RequestContextMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +18,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+    configure_logging(settings.log_level)
     pool = None
     if settings.database_url:
         pool = create_pool(settings)
@@ -41,6 +44,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     app = FastAPI(title="AI Appointment Booking Agent", lifespan=lifespan)
     register_exception_handlers(app)
+    app.add_middleware(RequestContextMiddleware)
     app.include_router(health.router)
     app.include_router(catalog.router)
     app.include_router(bookings.router)
