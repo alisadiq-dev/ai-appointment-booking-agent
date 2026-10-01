@@ -57,13 +57,25 @@ class CalendarUnavailableError(AppError):
 class CalendarEventMissingError(AppError):
     """The booking's calendar entry no longer exists, so it cannot be moved."""
 
-    def __init__(self) -> None:
-        super().__init__(
-            "calendar_event_missing",
-            "This booking's calendar entry no longer exists. Please cancel it and book again.",
-            409,
-        )
+    def __init__(
+        self,
+        message: str = (
+            "This booking's calendar entry no longer exists. Please cancel it and book again."
+        ),
+    ) -> None:
+        super().__init__("calendar_event_missing", message, 409)
 
 
 class CalendarEventNotFoundError(Exception):
     """The calendar has no (live) event with that id, e.g. it was deleted by hand."""
+
+
+class TurnInProgressError(AppError):
+    """Another chat message from the same user is still being processed."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "turn_in_progress",
+            "Your previous message is still being processed. Please wait a moment and try again.",
+            409,
+        )

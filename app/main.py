@@ -4,8 +4,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api.deps import get_calendar
-from app.api.routers import admin, bookings, catalog, health
+from app.api.deps import get_calendar, get_language_model
+from app.api.routers import admin, bookings, catalog, chat, health
 from app.core.config import get_settings
 from app.core.db import create_pool
 from app.core.errors import register_exception_handlers
@@ -30,6 +30,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "CALENDAR_ENABLED is false: bookings are NOT synced to Google Calendar "
             "(must be true in production)"
         )
+    get_language_model()  # logs a warning now if GEMINI_API_KEY is missing
     try:
         yield
     finally:
@@ -44,6 +45,7 @@ def create_app() -> FastAPI:
     app.include_router(catalog.router)
     app.include_router(bookings.router)
     app.include_router(admin.router)
+    app.include_router(chat.router)
     return app
 
 

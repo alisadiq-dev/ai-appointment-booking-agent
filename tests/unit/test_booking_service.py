@@ -594,6 +594,7 @@ def test_reschedule_when_the_event_was_deleted_by_hand_is_409_and_rolls_back(h: 
         h.request(h.service.reschedule_booking, ALICE, booking.id, monday(7, 0))
 
     assert (info.value.status_code, info.value.code) == (409, "calendar_event_missing")
+    assert "cancel it and book again" in info.value.message  # REST wording stays the default
     assert h.bookings.rows[booking.id].start_at == monday(5, 0)
 
 

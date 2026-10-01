@@ -2,7 +2,7 @@
 
 `app/agents/` handles one chat turn: read the customer's message, collect what is missing, propose
 an action, and only after an explicit yes on a later turn create, reschedule or cancel a booking.
-The HTTP endpoint (`POST /chat`) arrives in Phase 6; this phase is the agent itself.
+The HTTP endpoint is `POST /chat`, documented in [chat-api.md](chat-api.md).
 
 ## Turn flow
 

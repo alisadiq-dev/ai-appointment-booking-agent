@@ -203,3 +203,26 @@ def test_gemini_api_key_never_appears_in_repr(monkeypatch: pytest.MonkeyPatch) -
     assert settings.gemini_api_key.get_secret_value() == "sentinel-key-value"
     assert "sentinel-key-value" not in repr(settings)
     assert "sentinel-key-value" not in str(settings)
+
+
+def test_chat_rate_limit_defaults_are_10_per_60_seconds(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("CHAT_RATE_LIMIT_REQUESTS", "CHAT_RATE_LIMIT_WINDOW_SECONDS"):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.chat_rate_limit_requests == 10
+    assert settings.chat_rate_limit_window_seconds == 60
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [("CHAT_RATE_LIMIT_REQUESTS", "0"), ("CHAT_RATE_LIMIT_WINDOW_SECONDS", "0")],
+)
+def test_chat_rate_limit_must_be_positive(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str
+) -> None:
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
