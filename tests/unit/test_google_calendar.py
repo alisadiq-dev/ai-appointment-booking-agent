@@ -387,3 +387,116 @@ def test_list_busy_reads_a_local_time_without_an_offset_in_the_events_own_timezo
     assert busy == [
         TimeRange(datetime(2031, 3, 4, 5, 0, tzinfo=UTC), datetime(2031, 3, 4, 6, 0, tzinfo=UTC))
     ]
+
+
+# ---------------------------------------------- all-day events use BUSINESS_TIMEZONE, not UTC
+
+
+def _busy_for_all_day(zone_name: str, day: str, next_day: str) -> list[TimeRange]:
+    http = HttpMockSequence([ok({"items": [_item(day, next_day, all_day=True)]})])
+    calendar = GoogleCalendar(CAL, ZoneInfo(zone_name), http_factory=lambda: http, num_retries=0)
+    return calendar.list_busy(START, START + timedelta(days=60))
+
+
+@pytest.mark.parametrize(
+    ("zone", "expected_start", "expected_end"),
+    [
+        # UTC+5: local midnight is 19:00Z the evening before
+        (
+            "Asia/Karachi",
+            datetime(2031, 3, 4, 19, tzinfo=UTC),
+            datetime(2031, 3, 5, 19, tzinfo=UTC),
+        ),
+        # UTC-8 (PST in early March): local midnight is 08:00Z the same day
+        (
+            "America/Los_Angeles",
+            datetime(2031, 3, 5, 8, tzinfo=UTC),
+            datetime(2031, 3, 6, 8, tzinfo=UTC),
+        ),
+        ("UTC", datetime(2031, 3, 5, tzinfo=UTC), datetime(2031, 3, 6, tzinfo=UTC)),
+    ],
+)
+def test_an_all_day_date_is_read_in_the_business_timezone(
+    zone: str, expected_start: datetime, expected_end: datetime
+) -> None:
+    busy = _busy_for_all_day(zone, "2031-03-05", "2031-03-06")
+
+    assert busy == [TimeRange(expected_start, expected_end)]
+
+
+def test_an_all_day_date_is_not_simply_read_as_utc() -> None:
+    [karachi] = _busy_for_all_day("Asia/Karachi", "2031-03-05", "2031-03-06")
+
+    assert karachi.start != datetime(2031, 3, 5, 0, 0, tzinfo=UTC)
+    assert karachi.end - karachi.start == timedelta(hours=24)
+
+
+def test_an_all_day_event_on_a_dst_change_day_is_a_real_23_hour_day() -> None:
+    # London springs forward on 2031-03-30: that local day is only 23 hours long.
+    [day] = _busy_for_all_day("Europe/London", "2031-03-30", "2031-03-31")
+
+    assert day == TimeRange(
+        datetime(2031, 3, 30, 0, 0, tzinfo=UTC), datetime(2031, 3, 30, 23, 0, tzinfo=UTC)
+    )
+
+
+def test_a_multi_day_all_day_event_blocks_every_local_day() -> None:
+    [busy] = _busy_for_all_day("Asia/Karachi", "2031-03-05", "2031-03-08")  # end is exclusive
+
+    assert busy == TimeRange(
+        datetime(2031, 3, 4, 19, tzinfo=UTC), datetime(2031, 3, 7, 19, tzinfo=UTC)
+    )
+
+
+# ------------------------------------------ singleEvents (recurring) and nextPageToken paging
+
+
+def test_events_list_expands_recurring_events_with_single_events_true() -> None:
+    calendar, http = make(ok({"items": []}))
+
+    calendar.list_busy(START, START + timedelta(days=30))
+
+    [(uri, method, _)] = requests_of(http)
+    query = parse_qs(urlparse(uri).query)
+    assert method == "GET"
+    # Without singleEvents=true Google returns one "master" row for a recurring series (and
+    # only its first occurrence's time), so later occurrences would not block anything.
+    assert query["singleEvents"] == ["true"]
+    assert "showDeleted" in query
+    assert query["showDeleted"] == ["false"]
+
+
+def test_every_occurrence_of_a_recurring_event_blocks_time() -> None:
+    def occurrence(day: int) -> dict[str, Any]:
+        item = _item(f"2031-03-{day:02d}T05:00:00+00:00", f"2031-03-{day:02d}T06:00:00+00:00")
+        item["id"] = f"series_2031030{day}T050000Z"  # how Google names expanded instances
+        item["recurringEventId"] = "series"
+        return item
+
+    calendar, _ = make(ok({"items": [occurrence(4), occurrence(11), occurrence(18)]}))
+
+    busy = calendar.list_busy(START, START + timedelta(days=30))
+
+    assert [r.start.day for r in busy] == [4, 11, 18]
+
+
+def test_list_busy_follows_every_next_page_token_in_order() -> None:
+    def page(day: int, token: str | None) -> tuple[dict[str, str], str]:
+        body: dict[str, Any] = {
+            "items": [
+                _item(f"2031-03-{day:02d}T05:00:00+00:00", f"2031-03-{day:02d}T06:00:00+00:00")
+            ]
+        }
+        if token:
+            body["nextPageToken"] = token
+        return ok(body)
+
+    calendar, http = make(page(4, "t2"), page(5, "t3"), page(6, None))
+
+    busy = calendar.list_busy(START, START + timedelta(days=30))
+
+    queries = [parse_qs(urlparse(uri).query) for uri, _, _ in requests_of(http)]
+    assert [q.get("pageToken") for q in queries] == [None, ["t2"], ["t3"]]
+    assert [r.start.day for r in busy] == [4, 5, 6]  # nothing from any page is lost
+    assert all(q["singleEvents"] == ["true"] for q in queries)  # every page, not just the first
+    assert all(q["maxResults"] == ["250"] for q in queries)
