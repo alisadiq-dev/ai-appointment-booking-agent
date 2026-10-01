@@ -199,11 +199,15 @@ class BookingService:
 
     def _slot(self, start_at: datetime, service: Service) -> tuple[datetime, datetime]:
         """Validate a requested start for a service; returns the UTC (start, end)."""
-        start = start_at.astimezone(UTC)
-        end = start + timedelta(minutes=service.duration_minutes)
-        if start <= self._clock():
-            raise BookingInPastError
-        window = window_for_instant(start, self._business_hours.list_all(), self._zone)
+        try:
+            start = start_at.astimezone(UTC)
+            end = start + timedelta(minutes=service.duration_minutes)
+            if start <= self._clock():
+                raise BookingInPastError
+            window = window_for_instant(start, self._business_hours.list_all(), self._zone)
+        except OverflowError:
+            # Instants at the very edge of the calendar (year 1 or 9999): never a real booking.
+            raise OutsideBusinessHoursError from None
         if window is None or start < window.start or end > window.end:
             raise OutsideBusinessHoursError
         if not is_aligned(start, window, self._interval):

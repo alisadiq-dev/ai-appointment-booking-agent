@@ -6,6 +6,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.core.hardening import SECURITY_HEADERS
+
 logger = logging.getLogger(__name__)
 
 # Fixed codes and messages for framework-raised HTTP errors (unknown route, wrong method).
@@ -90,7 +92,9 @@ async def _handle_unexpected_error(request: Request, exc: Exception) -> JSONResp
     return JSONResponse(
         status_code=500,
         content={"error": {"code": "internal_error", "message": "An internal error occurred."}},
-        headers={"X-Request-ID": request_id} if request_id else None,
+        # Starlette answers an unhandled error from outside the middleware, so the headers they
+        # would have added are added here.
+        headers={**SECURITY_HEADERS, **({"X-Request-ID": request_id} if request_id else {})},
     )
 
 

@@ -9,6 +9,7 @@ from app.api.routers import admin, bookings, catalog, chat, health
 from app.core.config import get_settings
 from app.core.db import create_pool
 from app.core.errors import register_exception_handlers
+from app.core.hardening import BodySizeLimitMiddleware, SecurityHeadersMiddleware
 from app.core.logging import configure_logging
 from app.core.request_context import RequestContextMiddleware
 
@@ -44,6 +45,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     app = FastAPI(title="AI Appointment Booking Agent", lifespan=lifespan)
     register_exception_handlers(app)
+    # The last one added is the outermost: the request id and access log wrap everything else.
+    app.add_middleware(BodySizeLimitMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RequestContextMiddleware)
     app.include_router(health.router)
     app.include_router(catalog.router)
