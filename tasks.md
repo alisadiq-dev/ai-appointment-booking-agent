@@ -38,7 +38,12 @@ Decisions (approved): `BUSINESS_TIMEZONE` default Asia/Karachi (DST proven with 
 - Follow-up (Phase 7): 404/405 from unknown routes still use FastAPI's default body, not the standard error format
 
 ## Phase 4: Google Calendar integration
-- [ ] Interface plus implementation: sync create, update, delete. Mocked in tests
+Approved so far: service account (calendar shared to it), no OAuth user flow; env vars `CALENDAR_ENABLED`, `GOOGLE_CALENDAR_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON` (kept outside the repo); live test credentials provided.
+- [x] `CalendarPort` interface, `GoogleCalendar` adapter (service account, `calendar.events` scope, timeout, backoff, deterministic event ids, fail closed), mocked-HTTP tests, secret-safe settings
+- [x] Live test written (`pytest -m live_google`), sweeps its own events
+- [ ] **Live test blocked:** Google returns 404 and the service account sees 0 calendars, so the calendar is not shared with it (see docs/google-calendar.md). Re-run after sharing
+- [ ] Wire into `BookingService` (create/reschedule/cancel inside the request transaction, compensating delete, `google_event_id` saved, availability and create treat manual events as busy). Waiting on decisions: strict consistency, fail-closed availability, event content, all-day events
+- [ ] `FakeCalendar` for service tests, no-op calendar for local dev (`CALENDAR_ENABLED=false`)
 
 ## Phase 5: LangGraph agent
 - [ ] Nodes one by one with tests; confirmation gate tested explicitly
@@ -53,6 +58,7 @@ Decisions (approved): `BUSINESS_TIMEZONE` default Asia/Karachi (DST proven with 
 ## Phase 8: CI/CD
 - [ ] GitHub Actions: lint and tests
 - [ ] **CI must also run `supabase start` and `supabase test db`, not only pytest** (the pgTAP suite guards the overlap constraint, RLS and privileges)
+- [ ] CI runs the live Google tests only if a test calendar and key are stored as CI secrets (otherwise they are skipped without `REQUIRE_DB`); `CALENDAR_ENABLED` must be `true` in the deployed service
 - [ ] **CI sets `REQUIRE_DB=1`** plus `DATABASE_URL`, `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`, so missing configuration fails the DB-backed and real-GoTrue tests instead of skipping them (see docs/local-supabase.md)
 - [ ] CI must create `supabase/signing_keys.json` before `supabase start` (`echo '[]' > ...` then `supabase gen signing-key --algorithm ES256 --append`; see docs/local-supabase.md) and run `pytest -m local_supabase` with `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY`
 - [ ] Verify JWKS verification against a hosted Supabase project (asymmetric signing keys enabled) before relying on it in production
