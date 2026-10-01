@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from app.repositories.errors import SlotTakenError
+from app.repositories.errors import ActiveBookingLimitError, SlotTakenError
 from app.schemas.bookings import Booking
 from app.schemas.business_hours import BusinessHour
 from app.schemas.calendar import CalendarEvent
@@ -35,7 +35,17 @@ class InMemoryBookingRepository:
         *,
         booking_id: UUID | None = None,
         google_event_id: str | None = None,
+        max_active: int | None = None,
+        now: datetime | None = None,
     ) -> Booking:
+        if max_active is not None and now is not None:
+            active = sum(
+                1
+                for b in self.rows.values()
+                if b.user_id == user_id and b.status == "confirmed" and b.start_at > now
+            )
+            if active >= max_active:
+                raise ActiveBookingLimitError
         if self._conflicts(start_at, end_at):
             raise SlotTakenError
         booking = Booking(

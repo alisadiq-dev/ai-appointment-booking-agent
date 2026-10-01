@@ -4,7 +4,7 @@ from uuid import UUID
 
 import psycopg.errors
 
-from app.repositories.errors import SlotTakenError
+from app.repositories.errors import ActiveBookingLimitError, SlotTakenError
 from app.repositories.types import Conn
 from app.schemas.bookings import Booking
 from app.schemas.time_range import TimeRange
@@ -64,15 +64,34 @@ class BookingRepository:
         *,
         booking_id: UUID | None = None,
         google_event_id: str | None = None,
+        max_active: int | None = None,
+        now: datetime | None = None,
     ) -> Booking:
+        # The limit is counted inside the same statement, under the booking write lock, so two
+        # simultaneous requests from one user cannot both pass it. No row back = limit reached.
         row = self._write_returning_row(
             "insert into public.bookings "
             "(id, user_id, service_id, start_at, end_at, google_event_id) "
-            "values (coalesce(%s::uuid, gen_random_uuid()), %s, %s, %s, %s, %s) "
+            "select coalesce(%s::uuid, gen_random_uuid()), %s, %s, %s, %s, %s "
+            "where %s::int is null or (select count(*) from public.bookings "
+            "  where user_id = %s and status = 'confirmed' "
+            "  and start_at > %s::timestamptz) < %s::int "
             "returning id, user_id, service_id, start_at, end_at, status, google_event_id",
-            (booking_id, user_id, service_id, start_at, end_at, google_event_id),
+            (
+                booking_id,
+                user_id,
+                service_id,
+                start_at,
+                end_at,
+                google_event_id,
+                max_active,
+                user_id,
+                now,
+                max_active,
+            ),
         )
-        assert row is not None  # noqa: S101 - INSERT ... RETURNING always yields a row
+        if row is None:
+            raise ActiveBookingLimitError
         return Booking.model_validate(row)
 
     def get_for_user(self, booking_id: UUID, user_id: UUID) -> Booking | None:

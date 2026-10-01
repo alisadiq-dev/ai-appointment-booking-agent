@@ -44,6 +44,7 @@ from app.schemas.time_range import TimeRange
 from app.services.booking_service import BookingService
 from app.services.errors import (
     BookingInPastError,
+    BookingLimitReachedError,
     BookingNotActiveError,
     BookingNotFoundError,
     ForbiddenError,
@@ -71,6 +72,7 @@ HELP_REPLY = (
 # so they must propagate and roll the request's transaction back.
 _FRIENDLY_ERRORS = (
     SlotUnavailableError,
+    BookingLimitReachedError,
     BookingNotFoundError,
     BookingNotActiveError,
     BookingInPastError,
@@ -271,6 +273,13 @@ class BookingAgent:
 
         if action is None:
             return ask(HELP_REPLY)
+
+        if action == "book":
+            # Say so before asking for details, not after the customer has said yes. Only a
+            # courtesy: the service enforces the limit again when the booking is written.
+            limit = self._bookings.max_active_bookings
+            if len(self._my_bookings(user_id)) >= limit:
+                return self._stale_proposal_reply(BookingLimitReachedError(limit), {}, {})
 
         if action in ("reschedule", "cancel"):
             mine = self._my_bookings(user_id)

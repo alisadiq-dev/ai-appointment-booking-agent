@@ -15,6 +15,7 @@ from app.schemas.time_range import TimeRange
 from app.services.booking_service import BookingService
 from app.services.errors import (
     BookingInPastError,
+    BookingLimitReachedError,
     BookingNotActiveError,
     BookingNotFoundError,
     CalendarEventMissingError,
@@ -58,7 +59,7 @@ def _hours() -> list[BusinessHour]:
 
 
 class Harness:
-    def __init__(self) -> None:
+    def __init__(self, max_active_bookings: int = 3) -> None:
         self.haircut: Service = make_service("Haircut", 30)
         self.combo: Service = make_service("Haircut & Beard", 45)
         self.bookings = InMemoryBookingRepository()
@@ -76,6 +77,7 @@ class Harness:
             zone=KARACHI,
             slot_interval=timedelta(minutes=15),
             clock=lambda: self.now,
+            max_active_bookings=max_active_bookings,
         )
 
     def book(self, user: UUID, start: datetime, svc: Service | None = None) -> Booking:
@@ -711,3 +713,91 @@ def test_availability_combines_database_bookings_and_manual_events(h: Harness) -
     assert monday(5, 0) not in starts
     assert monday(7, 0) not in starts
     assert monday(6, 0) in starts
+
+
+# ------------------------------------------------------------------ active booking limit
+
+
+def _fill(h: Harness, user: UUID, count: int = 3) -> list[Booking]:
+    return [h.book(user, monday(4 + i)) for i in range(count)]  # 09:00, 10:00, 11:00 local
+
+
+def test_a_user_can_hold_up_to_the_limit(h: Harness) -> None:
+    assert len(_fill(h, ALICE, 3)) == 3
+
+
+def test_the_booking_over_the_limit_is_409_booking_limit_reached_and_writes_nothing(
+    h: Harness,
+) -> None:
+    _fill(h, ALICE)
+    events_before = dict(h.calendar.events)
+
+    with pytest.raises(BookingLimitReachedError) as info:
+        h.request(h.book, ALICE, monday(8))
+
+    assert (info.value.status_code, info.value.code) == (409, "booking_limit_reached")
+    assert "3" in info.value.message
+    assert len(h.bookings.rows) == 3
+    assert h.calendar.events == events_before  # no calendar event for the refused booking
+
+
+def test_the_limit_is_per_user(h: Harness) -> None:
+    _fill(h, ALICE)
+
+    booking = h.book(BOB, monday(8))
+
+    assert booking.user_id == BOB
+
+
+def test_cancelling_frees_a_place(h: Harness) -> None:
+    first, *_ = _fill(h, ALICE)
+    h.service.cancel_booking(ALICE, first.id)
+
+    assert h.book(ALICE, monday(8)).status == "confirmed"
+
+
+def test_cancelled_bookings_do_not_count(h: Harness) -> None:
+    for booking in _fill(h, ALICE):
+        h.service.cancel_booking(ALICE, booking.id)
+
+    assert len(_fill(h, ALICE)) == 3
+
+
+def test_bookings_that_already_started_do_not_count(h: Harness) -> None:
+    _fill(h, ALICE)
+    h.now = monday(4, 30)  # the 09:00 booking has started; 10:00 and 11:00 are still ahead
+
+    assert h.book(ALICE, monday(8)).status == "confirmed"  # two active, so there is room
+
+
+def test_rescheduling_at_the_limit_is_not_a_new_booking(h: Harness) -> None:
+    first, *_ = _fill(h, ALICE)
+
+    moved = h.service.reschedule_booking(ALICE, first.id, monday(9))
+
+    assert moved.id == first.id
+    assert moved.start_at == monday(9)
+    assert len(h.bookings.rows) == 3
+
+
+def test_a_refused_booking_still_leaves_reschedule_and_cancel_working(h: Harness) -> None:
+    first, second, _ = _fill(h, ALICE)
+    with pytest.raises(BookingLimitReachedError):
+        h.book(ALICE, monday(8))
+
+    h.service.reschedule_booking(ALICE, first.id, monday(9))
+    h.service.cancel_booking(ALICE, second.id)
+
+
+def test_the_limit_is_configurable() -> None:
+    h = Harness(max_active_bookings=1)
+    h.book(ALICE, monday(4))
+
+    with pytest.raises(BookingLimitReachedError):
+        h.book(ALICE, monday(6))
+
+
+def test_the_default_limit_is_three() -> None:
+    from app.core.config import Settings
+
+    assert Settings().max_active_bookings_per_user == 3
