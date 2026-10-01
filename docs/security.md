@@ -146,18 +146,38 @@ false for a customer, true for an admin, not callable by `anon`).
 **What we do.**
 - The booking flow cannot double book: a database overlap constraint plus an advisory lock
   serialise writes (see [concurrency.md](concurrency.md)).
+- **Each user can hold at most `MAX_ACTIVE_BOOKINGS_PER_USER` active bookings (default 3).** Active
+  means confirmed and not yet started. The rule is in the service layer, so REST and chat share it:
+  a new booking over the limit is `409 booking_limit_reached` in the standard format. In chat the
+  customer gets a friendly reply ("... Nothing has been changed.") and nothing is written; the agent
+  says so before asking for details, and again at execute time in case the limit was reached
+  between the proposal and the yes. The count is made **inside the booking insert, under the booking
+  write lock**, so simultaneous requests from one user cannot both pass it.
+- **Rescheduling is not a new booking** and is never blocked by the limit; cancelling frees a place.
+  Cancelled bookings and bookings that have already started do not count. Other users' bookings
+  are never counted.
 - Only own, confirmed, future bookings can be changed; the chat agent writes only after an
   **explicit yes** on a later turn, read deterministically (not by the model).
 - Chat is rate limited per user (API4). All writes need a verified, non-anonymous account.
 
-**Evidence.** pgTAP `003_bookings_overlap.sql`; the 6-thread race test in
+**Evidence.** Limit: `unit/test_booking_service.py` ("active booking limit" section: up to the limit,
+409 and no write or calendar event over it, per user, cancel frees a place, cancelled and started
+bookings do not count, reschedule at the limit works, configurable, default 3);
+`integration/test_api_bookings.py::test_the_fourth_active_booking_is_409_in_the_standard_format`
+and `::test_the_limit_does_not_affect_other_users_or_rescheduling`;
+`unit/agents/test_booking_limit.py` (friendly reply and no write, a later yes books nothing, limit
+reached between proposal and yes, reschedule still allowed);
+real Postgres: `integration/test_booking_service_db.py::test_concurrent_bookings_by_one_user_cannot_exceed_the_limit`
+(8 simultaneous bookings by one user give exactly 3; checked to fail without the SQL check) and
+`::test_the_limit_is_enforced_in_sql_and_reschedule_and_cancel_still_work`.
+Overlap and gate: pgTAP `003_bookings_overlap.sql`; the 6-thread race test in
 `integration/test_booking_service_db.py`; `unit/agents/test_confirmation_gate.py`;
 `unit/agents/test_agent_injection.py`.
 
-**Gap / known limit.** There is **no cap on how many future bookings one user may hold**, so a
-single account could reserve many slots (they can be cancelled, and each booking is visible to the
-business and in the calendar). A cap or a per-day limit would be a product decision; it is not
-built. No CAPTCHA or email verification beyond what Supabase Auth provides.
+**Gap / known limit.** The limit bounds how many slots one account can hold, not how many accounts
+exist: someone could still make many accounts, so sign-up protection (email confirmation, CAPTCHA,
+Supabase Auth rate limits) matters and is configured in Supabase, not here. There is no limit on
+how often a user can book and cancel in a row (only `/chat` is rate limited).
 
 ## API7: Server side request forgery
 

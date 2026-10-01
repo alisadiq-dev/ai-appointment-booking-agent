@@ -79,7 +79,8 @@ Decisions (approved): `/docs` stays enabled; no CORS (a future frontend needs CO
 - [x] Security headers on every response; 32 KiB request body cap (413)
 - [x] Input review: found and fixed a 500 for start times at the edge of the calendar (year 1 or 9999), now 422; response fields and unknown request fields tested
 - [x] OWASP API Security Top 10 (2023) review in docs/security.md (risk, what we do, evidence, known limits)
-- Known limits (listed in docs/security.md): no cap on future bookings per user, only `/chat` is rate limited, `GET /bookings` is not paginated, no HSTS or CSP, no `/v1` prefix, no automated dependency scan (Phase 8)
+- [x] Cap on active future bookings per user (`MAX_ACTIVE_BOOKINGS_PER_USER`, default 3) in the service layer, atomic in the booking insert: 409 `booking_limit_reached` on REST, a friendly reply with no write in chat; rescheduling is not a new booking (tested on fakes, HTTP, chat and real Postgres incl. a concurrency test)
+- Known limits (listed in docs/security.md): only `/chat` is rate limited (no limit on book/cancel cycles), `GET /bookings` is not paginated, no HSTS or CSP, no `/v1` prefix, no automated dependency scan (Phase 8)
 
 ## Phase 8: CI/CD
 - [ ] GitHub Actions: lint and tests; add a dependency vulnerability scan (for example `pip-audit`) and Dependabot (from docs/security.md, API9)
@@ -90,6 +91,7 @@ Decisions (approved): `/docs` stays enabled; no CORS (a future frontend needs CO
 - [ ] Verify JWKS verification against a hosted Supabase project (asymmetric signing keys enabled) before relying on it in production
 - [ ] **CI must build the Docker image so it is verified before deploy** (Docker was never built locally before this phase; install Docker Desktop first)
 - [ ] **Cloud Run `--max-instances=1`**: the chat rate limiter is in memory and per instance (a user could exceed the limit across instances, and a restart resets it). Raise it only after moving the limiter to a shared store such as Redis (see docs/chat-api.md)
+- [ ] Add an HSTS header (`Strict-Transport-Security`) once HTTPS is confirmed on Cloud Run (set in the app's security headers or at the edge; start with a short max-age)
 - [ ] Check current Cloud Run free tier limits, deploy, verify /docs live
 
 ## Phase 9: Portfolio polish

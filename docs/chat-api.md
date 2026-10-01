@@ -21,7 +21,7 @@ after trimming; extra fields are rejected).
 
 | Status | Code | When |
 |--------|------|------|
-| 200 | | A reply, including business outcomes: slot taken or booking cancelled between proposal and yes (the reply offers fresh slots). |
+| 200 | | A reply, including business outcomes: slot taken or booking cancelled between proposal and yes (the reply offers fresh slots), and the booking limit (the user already holds `MAX_ACTIVE_BOOKINGS_PER_USER` upcoming bookings: a friendly reply, nothing written). |
 | 401 | `unauthorized` | Missing or invalid token. Does not use up anyone's rate-limit budget. |
 | 409 | `turn_in_progress` | Another message from the same user is still being processed. Retry shortly. |
 | 409 | `calendar_event_missing` | The booking's Google event was deleted by hand, so it cannot be moved. See below. |
