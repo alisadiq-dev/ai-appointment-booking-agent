@@ -22,11 +22,20 @@ pooler** string from the dashboard's *Connect* dialog: host `aws-<n>-<region>.po
 port **5432**, user `postgres.<project-ref>`. Do not build the host by hand, copy it.
 Append `?sslmode=require`.
 
-Set **`DB_POOL_MAX_SIZE=5`** in production (the code default is 10). A session pooler gives each
-client connection its own backend connection, and the free plan allows only a small number of
-them; a pool of 10 plus a restart that overlaps the old process during a deploy could exhaust the
-limit and lock the service out. Five is enough because one chat request holds one connection
-for a whole turn and the per-user turn lock and rate limit bound the concurrency.
+Set **`DB_POOL_MAX_SIZE=5`** in production (the code default is 10). Numbers confirmed in the
+dashboard for this project (Nano compute, shared pooler `aws-0-ap-southeast-1.pooler.supabase.com`,
+port 5432): **pool size 15** per user and database, **max client connections 200** (fixed on
+Nano). In session mode every app connection holds one backend connection for as long as it lives,
+so the real ceiling is the 15, not the 200.
+
+- Steady state: at most 5 connections.
+- Deploy overlap (old and new instance both up for a moment): at most 10.
+- That leaves 5 of the 15 for the migrations workflow (`supabase db push`) and the dashboard.
+
+With the default of 10, an overlapping deploy could take all 15 and lock out migrations and the
+dashboard. Five is enough for the app because one chat request holds one connection for a whole
+turn, and the per-user turn lock and rate limit bound the concurrency. If the compute size changes,
+re-check the pool size before raising `DB_POOL_MAX_SIZE`.
 
 ## Environment variables (Render dashboard only, never in git)
 
