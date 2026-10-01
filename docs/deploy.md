@@ -52,6 +52,9 @@ dashboard on first creation and they never enter the repository.
    Data API (PostgREST). It reaches Postgres directly through the session pooler and uses
    Supabase only for Auth, so the JWKS endpoint (`/auth/v1/...`, GoTrue) is unaffected. Our
    migrations enable RLS per table and pgTAP verifies it, so automatic RLS adds nothing.
+   **Verified (2026-10-01):** with the Data API disabled, `GET /auth/v1/.well-known/jwks.json`
+   still answers and lists one ES256 (P-256) key, after migrating the legacy HS256 secret and
+   rotating. Verifying a real user token against it is still open (tasks.md, Phase 8).
 2. *Settings, JWT Signing Keys*: **Migrate JWT secret**, then **Rotate keys** so an ES256 or RS256
    key is active. The API verifies tokens only against
    `https://<ref>.supabase.co/auth/v1/.well-known/jwks.json`; with only the legacy secret it
