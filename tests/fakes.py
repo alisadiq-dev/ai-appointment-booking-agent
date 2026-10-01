@@ -1,8 +1,10 @@
 """In-memory repositories that behave like the real ones, including the overlap rule."""
 
+import copy
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from app.repositories.errors import SlotTakenError
@@ -170,3 +172,17 @@ class FakeCalendar:
 
 def make_service(name: str = "Haircut", minutes: int = 30) -> Service:
     return Service(id=uuid.uuid4(), name=name, duration_minutes=minutes, price=Decimal("25.00"))
+
+
+class InMemorySessionStore:
+    def __init__(self) -> None:
+        self.rows: dict[UUID, dict[str, Any]] = {}
+
+    def load(self, user_id: UUID) -> dict[str, Any]:
+        return copy.deepcopy(self.rows.get(user_id, {}))
+
+    def save(self, user_id: UUID, state: dict[str, Any]) -> None:
+        self.rows[user_id] = copy.deepcopy(state)
+
+    def clear(self, user_id: UUID) -> None:
+        self.rows.pop(user_id, None)
