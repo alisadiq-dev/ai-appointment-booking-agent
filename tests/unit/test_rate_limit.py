@@ -138,3 +138,25 @@ def test_concurrent_requests_never_exceed_the_limit() -> None:
 def test_invalid_configuration_is_rejected(limit: int, window: float) -> None:
     with pytest.raises(ValueError, match="must be positive"):
         SlidingWindowRateLimiter(limit=limit, window_seconds=window)
+
+
+def test_the_app_limiter_reads_its_limits_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.api.deps import get_chat_rate_limiter
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("CHAT_RATE_LIMIT_REQUESTS", "2")
+    monkeypatch.setenv("CHAT_RATE_LIMIT_WINDOW_SECONDS", "30")
+    get_settings.cache_clear()
+    get_chat_rate_limiter.cache_clear()
+    try:
+        app_limiter = get_chat_rate_limiter()
+        app_limiter.check("alice")
+        app_limiter.check("alice")
+        with pytest.raises(RateLimitedError) as caught:
+            app_limiter.check("alice")
+        assert caught.value.headers is not None
+        assert int(caught.value.headers["Retry-After"]) <= 30
+        assert get_chat_rate_limiter() is app_limiter  # one limiter per process
+    finally:
+        get_settings.cache_clear()
+        get_chat_rate_limiter.cache_clear()
