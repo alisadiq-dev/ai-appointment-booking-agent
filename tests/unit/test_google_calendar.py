@@ -337,3 +337,16 @@ def test_list_busy_reports_failures_as_unavailable() -> None:
 
     with pytest.raises(CalendarUnavailableError):
         calendar.list_busy(START, START + timedelta(days=1))
+
+
+def test_list_busy_reads_a_local_time_without_an_offset_in_the_events_own_timezone() -> None:
+    item = _item("2031-03-04T10:00:00", "2031-03-04T11:00:00")
+    item["start"]["timeZone"] = "Asia/Karachi"
+    item["end"]["timeZone"] = "Asia/Karachi"
+    calendar, _ = make(ok({"items": [item]}))
+
+    busy = calendar.list_busy(START, START + timedelta(days=1))
+
+    assert busy == [
+        TimeRange(datetime(2031, 3, 4, 5, 0, tzinfo=UTC), datetime(2031, 3, 4, 6, 0, tzinfo=UTC))
+    ]

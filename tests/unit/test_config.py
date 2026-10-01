@@ -166,3 +166,12 @@ def test_disabled_calendar_does_not_validate_the_key(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("GOOGLE_SERVICE_ACCOUNT_JSON", "garbage")
 
     assert Settings(_env_file=None).calendar_enabled is False
+
+
+def test_enabled_calendar_needs_the_key_to_be_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CALENDAR_ENABLED", "true")
+    monkeypatch.setenv("GOOGLE_CALENDAR_ID", "cal@group.calendar.google.com")
+    monkeypatch.delenv("GOOGLE_SERVICE_ACCOUNT_JSON", raising=False)
+
+    with pytest.raises(ValidationError, match="GOOGLE_SERVICE_ACCOUNT_JSON is not set"):
+        Settings(_env_file=None)
