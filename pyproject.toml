@@ -8,6 +8,8 @@ dependencies = [
     "google-api-python-client>=2.201.0",
     "google-auth>=2.59.1",
     "google-auth-httplib2>=0.4.3",
+    "google-genai>=2.26.0",
+    "langgraph>=1.2.12",
     "psycopg[binary,pool]>=3.3.6",
     "pydantic-settings>=2.15.0",
     "pyjwt[crypto]>=2.15.1",
@@ -41,6 +43,8 @@ markers = [
     "requires_db: needs DATABASE_URL; skipped if unset, or failed when REQUIRE_DB=1",
     "requires_google: needs GOOGLE_CALENDAR_ID and GOOGLE_SERVICE_ACCOUNT_JSON; skipped if unset, or failed when REQUIRE_DB=1",
     "live_google: talks to the real Google Calendar API (creates and deletes events in a test calendar)",
+    "requires_gemini: needs GEMINI_API_KEY; skipped if unset, or failed when REQUIRE_DB=1",
+    "live_gemini: talks to the real Gemini API (opt-in: pytest -m live_gemini)",
     "requires_supabase_auth: needs SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY; skipped if unset, or failed when REQUIRE_DB=1",
     "local_supabase: needs a running local Supabase (skipped unless DATABASE_URL, or SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY, are set)",
 ]

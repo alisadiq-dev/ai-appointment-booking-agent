@@ -175,3 +175,31 @@ def test_enabled_calendar_needs_the_key_to_be_set(monkeypatch: pytest.MonkeyPatc
 
     with pytest.raises(ValidationError, match="GOOGLE_SERVICE_ACCOUNT_JSON is not set"):
         Settings(_env_file=None)
+
+
+def test_gemini_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("GEMINI_API_KEY", "GEMINI_MODEL", "GEMINI_TIMEOUT_SECONDS"):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.gemini_api_key is None
+    assert settings.gemini_model == "gemini-3.5-flash-lite"
+    assert settings.gemini_timeout_seconds == 10
+
+
+def test_gemini_model_is_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.8-flash")
+
+    assert Settings(_env_file=None).gemini_model == "gemini-3.8-flash"
+
+
+def test_gemini_api_key_never_appears_in_repr(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "sentinel-key-value")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.gemini_api_key is not None
+    assert settings.gemini_api_key.get_secret_value() == "sentinel-key-value"
+    assert "sentinel-key-value" not in repr(settings)
+    assert "sentinel-key-value" not in str(settings)

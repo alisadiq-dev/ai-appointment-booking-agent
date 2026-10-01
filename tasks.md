@@ -48,11 +48,22 @@ Decisions (approved): service account (calendar shared to it), no OAuth user flo
 - Follow-up (Phase 7): a reconciliation script for orphan events, if wanted
 
 ## Phase 5: LangGraph agent
-- [ ] Nodes one by one with tests; confirmation gate tested explicitly
-- [ ] Reset the user's session state when a booking is completed or cancelled, so the next chat starts fresh (test it)
+Decisions (approved): conversation state lives in our own `conversation_sessions` table (no LangGraph checkpointer), so the confirmation gate is a stored proposal, not `interrupt()`. Gemini sits behind `LanguageModel` (default `gemini-3.5-flash-lite`, `GEMINI_MODEL`); any failure or a missing key gives a fixed fallback reply and no write. The gate covers create, reschedule and cancel: only a whole-message explicit yes on the next turn (deterministic, not the model) executes; a clear no clears the proposal and asks for another time. `user_id` always comes from the JWT; the model can only pick one of the user's own bookings by list number.
+- [x] Nodes with tests: understand, plan, propose, confirm_gate, execute (`app/agents/`, docs/agent.md)
+- [x] Confirmation gate tested explicitly (same-turn confirm, ambiguous reply, no, expiry, replaced proposal, slot taken, double yes, only edge into `execute`, calendar failure rolls back)
+- [x] Prompt-injection tests: instruction override, booking for another user, cancelling another user's booking id or number, tampered stored proposals; all end with no write
+- [x] Session state reset when a booking is completed, rescheduled or cancelled (tested in memory and on Postgres)
+- [x] Gemini adapter (`google-genai`), safe fallback on every failure; live tests are opt-in (`pytest -m live_gemini`) and pass
+- Known limitation: confirmation words are English only (documented)
+- [x] Execute turns business outcomes (slot taken, booking cancelled meanwhile) into a friendly reply that clears the stale proposal and offers fresh slots; calendar and database errors still propagate (tested)
+- Follow-up: Phase 6 requirements (one transaction per request, save the session only on success) are listed under Phase 6
 
 ## Phase 6: Chat API
 - [ ] POST /chat (load state, run graph, save state), in-memory rate limiting
+- [ ] **One database transaction per chat request**: one connection per request (like the booking routes), so a calendar or database error during the turn rolls back every write of that turn
+- [ ] **Save the session only when the turn succeeds**: if the graph raises (calendar or database failure), do not save or clear the state, so the customer can say yes again; answer 503 in the standard error format (covered by agent tests: a failed `execute` leaves the proposal in the session)
+- [ ] Business outcomes at execute (slot taken, booking cancelled meanwhile) are normal 200 replies, never 4xx or 5xx
+- [ ] Input length validation at the API (the agent already truncates to 1000 characters)
 
 ## Phase 7: Hardening
 - [ ] Error handling, logging, input validation, OWASP API Top 10 review
