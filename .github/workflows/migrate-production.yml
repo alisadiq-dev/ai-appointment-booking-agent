@@ -1,0 +1,52 @@
+name: Production migrations
+
+# Manual only. Applies supabase/migrations to the hosted project. Defaults to a dry run that only
+# lists what would be applied; untick "dry_run" to apply.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only list the migrations that would be applied
+        type: boolean
+        default: true
+      include_seed:
+        description: Also apply supabase/seed.sql (services and business hours; safe to repeat)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Never two migration runs at once.
+concurrency:
+  group: production-migrations
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: supabase/setup-cli@v3.0.1
+        with:
+          version: 2.119.0
+
+      # config.toml points at a local signing key file and every CLI command loads the config, so
+      # the file must exist. An empty list is only a placeholder: it is never used on production.
+      - name: Placeholder for the local signing key file
+        run: echo '[]' > supabase/signing_keys.json
+
+      - name: Link the hosted project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Migrations (dry run)
+        if: ${{ inputs.dry_run }}
+        run: supabase db push --dry-run ${{ inputs.include_seed && '--include-seed' || '' }}
+
+      - name: Apply migrations
+        if: ${{ !inputs.dry_run }}
+        run: supabase db push ${{ inputs.include_seed && '--include-seed' || '' }}

@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_LOCKED: "1"
+
+jobs:
+  test:
+    name: Lint, pgTAP and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+      - uses: supabase/setup-cli@v3.0.1
+        with:
+          version: 2.119.0
+
+      - run: uv sync
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+      # The signing key is private and gitignored; each run makes its own throwaway one.
+      - name: Create local signing key
+        run: |
+          echo '[]' > supabase/signing_keys.json
+          supabase gen signing-key --algorithm ES256 --append
+          chmod 600 supabase/signing_keys.json
+
+      - name: Start local Supabase
+        run: supabase start -x studio,imgproxy,realtime,storage-api,edge-runtime,logflare,vector,mailpit,postgres-meta,supavisor
+
+      - name: pgTAP (overlap constraint, RLS, privileges)
+        run: supabase test db
+
+      - name: Export local Supabase settings
+        run: |
+          supabase status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY)=' | sed -E 's/^API_URL=/SUPABASE_URL=/; s/^PUBLISHABLE_KEY=/SUPABASE_PUBLISHABLE_KEY=/' | tr -d '"' >> "$GITHUB_ENV"
+          echo "DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres" >> "$GITHUB_ENV"
+
+      # REQUIRE_DB=1: missing configuration fails the DB-backed and real-GoTrue tests instead of
+      # skipping them. The live Google and Gemini tests run in the `live` job.
+      - name: pytest (includes local_supabase)
+        env:
+          REQUIRE_DB: "1"
+        run: uv run pytest -m "not live_google and not live_gemini"
+
+      - if: failure()
+        run: supabase status || true
+
+  audit:
+    name: Dependency vulnerability scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
+      # Runtime dependencies only (what ships in the image), pinned and hashed from uv.lock.
+      - run: uv export --no-dev --no-emit-project --format requirements-txt -o requirements-audit.txt
+      # --disable-pip: audit the hashed file as is, without building an environment (the pypa
+      # action does that and failed once on a transient pip upgrade error).
+      - run: uvx pip-audit==2.10.1 --disable-pip --require-hashes -r requirements-audit.txt
+
+  docker:
+    name: Docker image builds and starts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Build image
+        run: docker build -t booking-agent:ci .
+      - name: Smoke test /health
+        run: |
+          docker run -d --name app -p 8080:8080 booking-agent:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/health; then echo; exit 0; fi
+            sleep 1
+          done
+          docker logs app
+          exit 1
+      - name: Container runs as a non-root user
+        run: test "$(docker exec app id -u)" != "0"

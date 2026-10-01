@@ -66,7 +66,7 @@ Decisions (approved): per-user rate limit of 10 requests per 60 seconds, in memo
 - [x] Business outcomes at execute (slot taken, booking cancelled meanwhile) are normal 200 replies (tested over HTTP)
 - [x] Input length validation at the API (1 to 1000 characters after trimming, extra fields rejected, message never echoed in errors)
 - [x] Concurrent turns for the same user: second fails fast with 409 `turn_in_progress`, first is unharmed, other users are not blocked (tested; the test fails if the lock is removed)
-- Known limit: the limiter is per instance and resets on restart (Phase 8 pins Cloud Run to one instance)
+- Known limit: the limiter is per instance and resets on restart (Phase 8 deploys to Render's free plan, which runs exactly one instance)
 - Known limit: a request with an invalid body (422) still counts against the rate limit and briefly takes a pooled connection and the user's turn lock (FastAPI resolves dependencies first); accepted and documented in docs/chat-api.md
 
 ## Phase 7: Hardening
@@ -82,17 +82,24 @@ Decisions (approved): `/docs` stays enabled; no CORS (a future frontend needs CO
 - [x] Cap on active future bookings per user (`MAX_ACTIVE_BOOKINGS_PER_USER`, default 3) in the service layer, atomic in the booking insert: 409 `booking_limit_reached` on REST, a friendly reply with no write in chat; rescheduling is not a new booking (tested on fakes, HTTP, chat and real Postgres incl. a concurrency test)
 - Known limits (listed in docs/security.md): only `/chat` is rate limited (no limit on book/cancel cycles), `GET /bookings` is not paginated, no HSTS or CSP, no `/v1` prefix, no automated dependency scan (Phase 8)
 
-## Phase 8: CI/CD
-- [ ] GitHub Actions: lint and tests; add a dependency vulnerability scan (for example `pip-audit`) and Dependabot (from docs/security.md, API9)
-- [ ] **CI must also run `supabase start` and `supabase test db`, not only pytest** (the pgTAP suite guards the overlap constraint, RLS and privileges)
-- [ ] CI runs the live Google tests only if a test calendar and key are stored as CI secrets (otherwise they are skipped without `REQUIRE_DB`); `CALENDAR_ENABLED` must be `true` in the deployed service
-- [ ] **CI sets `REQUIRE_DB=1`** plus `DATABASE_URL`, `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`, so missing configuration fails the DB-backed and real-GoTrue tests instead of skipping them (see docs/local-supabase.md)
-- [ ] CI must create `supabase/signing_keys.json` before `supabase start` (`echo '[]' > ...` then `supabase gen signing-key --algorithm ES256 --append`; see docs/local-supabase.md) and run `pytest -m local_supabase` with `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY`
-- [ ] Verify JWKS verification against a hosted Supabase project (asymmetric signing keys enabled) before relying on it in production
-- [ ] **CI must build the Docker image so it is verified before deploy** (Docker was never built locally before this phase; install Docker Desktop first)
-- [ ] **Cloud Run `--max-instances=1`**: the chat rate limiter is in memory and per instance (a user could exceed the limit across instances, and a restart resets it). Raise it only after moving the limiter to a shared store such as Redis (see docs/chat-api.md)
-- [ ] Add an HSTS header (`Strict-Transport-Security`) once HTTPS is confirmed on Cloud Run (set in the app's security headers or at the edge; start with a short max-age)
-- [ ] Check current Cloud Run free tier limits, deploy, verify /docs live
+## Phase 8: CI/CD and deployment
+Decisions (approved): deploy to Render's free web service from the existing Dockerfile (no GCP billing account available), region Singapore, auto-deploy only after CI passes (`autoDeployTrigger: checksPass`). Production database is a hosted Supabase free project (Singapore), reached through the **session pooler** (IPv4, port 5432); production sets `DB_POOL_MAX_SIZE=5` so the free pooler is not exhausted. Production migrations run only from a manual workflow. No keep-alive ping: the 15-minute idle cold start is documented instead. Secrets live only in Render environment variables and GitHub repository secrets.
+- [x] GitHub Actions: lint and tests; add a dependency vulnerability scan (`pip-audit` on an exported `uv.lock`) and Dependabot for uv, github-actions and docker (from docs/security.md, API9)
+- [x] **CI must also run `supabase start` and `supabase test db`, not only pytest** (the pgTAP suite guards the overlap constraint, RLS and privileges)
+- Split decision: PR #8 delivers CI, `render.yaml` and the migrations workflow. The unticked items below (live.yml run, hosted token check, HSTS, deploy verification) follow in a second PR after the deploy.
+- [ ] Live Google and Gemini tests run only from a manual workflow (`live.yml`, `workflow_dispatch`, needs the CI secrets, fails if one is missing) so they never gate Render or spend quota on every push; `CALENDAR_ENABLED` must be `true` in the deployed service
+- [x] **CI sets `REQUIRE_DB=1`** plus `DATABASE_URL`, `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`, so missing configuration fails the DB-backed and real-GoTrue tests instead of skipping them (see docs/local-supabase.md)
+- [x] CI must create `supabase/signing_keys.json` before `supabase start` (`echo '[]' > ...` then `supabase gen signing-key --algorithm ES256 --append`; see docs/local-supabase.md) and run `pytest -m local_supabase` with `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY`
+- [x] **CI must build the Docker image and smoke-test `/health`, so it is verified before deploy**
+- [x] `render.yaml` blueprint: Docker runtime, free plan, Singapore, one instance, health check `/health`, `autoDeployTrigger: checksPass`, `CALENDAR_ENABLED=true`, `DB_POOL_MAX_SIZE=5`, all secrets `sync: false`
+- [x] Manual workflow (`workflow_dispatch`) that runs `supabase link` and `supabase db push` against the hosted project
+- [x] Hosted Supabase project `dhovoboznckrknphwpir` (Singapore) created: Data API off, ES256 signing key active and served at the JWKS URL, anonymous sign-ins off, sign-ups closed, confirm email on
+- [ ] Verify a real hosted user token against the JWKS (after migrations and a hand-made demo user)
+- [ ] **Render free plan runs one instance**, which satisfies the in-memory chat rate limiter; document that, and that a restart or spin-down resets the counters. Raise the instance count only after moving the limiter to a shared store such as Redis (see docs/chat-api.md)
+- [ ] Document the cold start (spin-down after 15 idle minutes, about a minute to restart) and the free-plan limits (750 instance hours a month, ephemeral filesystem)
+- [ ] Add an HSTS header (`Strict-Transport-Security`) once HTTPS is confirmed on the Render URL (set in the app's security headers; start with a short max-age)
+- [ ] Deploy, verify /health and /docs live, run one real chat turn against production
 
 ## Phase 9: Portfolio polish
 - [ ] README (diagrams, setup, env vars, API examples), sample curl requests, demo script
+- [ ] Demo token script: password grant for a hand-made demo user (sign-ups are closed in production), credentials from a local secrets file, prints only the access token (see docs/deploy.md)
