@@ -46,7 +46,12 @@ dashboard on first creation and they never enter the repository.
 
 ## Hosted Supabase checklist
 
-1. New project in Southeast Asia (Singapore); keep the database password in a password manager.
+1. New project, ref `dhovoboznckrknphwpir`, region Southeast Asia (Singapore, `ap-southeast-1`).
+   Keep the database password in a password manager. Created with the **Data API disabled**,
+   **"Automatically expose new tables" off** and **automatic RLS off**: the app never uses the
+   Data API (PostgREST). It reaches Postgres directly through the session pooler and uses
+   Supabase only for Auth, so the JWKS endpoint (`/auth/v1/...`, GoTrue) is unaffected. Our
+   migrations enable RLS per table and pgTAP verifies it, so automatic RLS adds nothing.
 2. *Settings, JWT Signing Keys*: **Migrate JWT secret**, then **Rotate keys** so an ES256 or RS256
    key is active. The API verifies tokens only against
    `https://<ref>.supabase.co/auth/v1/.well-known/jwks.json`; with only the legacy secret it

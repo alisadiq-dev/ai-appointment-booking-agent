@@ -8,7 +8,9 @@ relative to `tests/`; `pgTAP` files are in `supabase/tests/database/` and run wi
 Trust model in one paragraph: the browser or app talks only to this backend. Identity comes from a
 Supabase JWT verified against the project's JWKS. The backend connects to Postgres with a role that
 bypasses RLS, so **every repository query filters by `user_id` itself**; RLS and grants are a second
-line of defence for the Data API, not the first. Admin rights come only from `profiles.role` in the
+line of defence for the Data API, not the first. In production the Data API is **switched off**
+(see API8), so these are defence in depth there; they stay essential on the local stack and for
+any future project that enables it. Admin rights come only from `profiles.role` in the
 database, never from a token claim.
 
 ## API1: Broken object level authorization
@@ -217,6 +219,15 @@ permissive CORS.
   with `FastAPI(docs_url=None, redoc_url=None, openapi_url=None)` if that changes.
 - The container runs as a non-root user; Supabase and database roles follow least privilege
   (`anon` has no privileges on any public table).
+- **Production Supabase project (`dhovoboznckrknphwpir`, Singapore) was created with the Data API
+  disabled, "Automatically expose new tables" off and automatic RLS off.** The app never calls
+  the Data API (PostgREST): it talks to Postgres directly through the backend role and uses Supabase
+  only for Auth (JWKS). With the Data API off, `anon` and `authenticated` tokens cannot read or
+  write any table over HTTP at all; RLS and grants remain as a second layer. Automatic RLS stays
+  off because our own migrations enable RLS table by table and pgTAP checks it; the local stack
+  keeps the Data API on, so the pgTAP privilege tests still run against the riskier configuration.
+  If the Data API is ever enabled, re-read `supabase/tests/database` results against production
+  first.
 - Production must run with `CALENDAR_ENABLED=true` (a warning is logged at startup otherwise).
 
 **Logging rules.** One access line per request with method, **route template** (not the raw
