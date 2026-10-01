@@ -1,0 +1,36 @@
+name: Live tests (Google Calendar and Gemini)
+
+# Manual only: run from the Actions tab (Live tests, Run workflow). Kept out of ci.yml so it never
+# gates Render's checksPass, and so pushes do not spend Gemini quota or touch the real calendar.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  UV_LOCKED: "1"
+
+jobs:
+  live:
+    name: Live Google and Gemini tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The Google tests share one test calendar: one run at a time.
+    concurrency:
+      group: live-google-calendar
+    env:
+      GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      # Fail instead of skipping when a secret is missing: a manual live run that tested nothing
+      # must not look green.
+      REQUIRE_DB: "1"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: pytest -m "live_google or live_gemini"
+        run: uv run pytest -m "live_google or live_gemini" --no-cov -v -rs

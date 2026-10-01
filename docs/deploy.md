@@ -94,7 +94,24 @@ login endpoint: it only verifies tokens.
 | Name | Used by |
 |---|---|
 | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, `SUPABASE_PROJECT_ID` | manual migrations workflow |
-| `GOOGLE_CALENDAR_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `GEMINI_API_KEY` | optional live tests in CI (skipped when absent) |
+| `GOOGLE_CALENDAR_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `GEMINI_API_KEY` | manual live tests workflow (`live.yml`) |
+
+## Live tests (manual)
+
+The real Google Calendar and Gemini tests are **not** part of CI. They live in
+`.github/workflows/live.yml` and run only on demand, so they never block a deploy, spend Gemini
+quota on every push, or touch the real calendar by accident.
+
+1. Add the repository secrets `GOOGLE_CALENDAR_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON` and
+   `GEMINI_API_KEY` (use a **test** calendar; see [google-calendar.md](google-calendar.md)).
+2. The workflow appears in the Actions tab once `live.yml` is on `main` (GitHub lists manual
+   workflows only from the default branch). Then: GitHub, **Actions** tab, **Live tests (Google Calendar and Gemini)** in the left list,
+   **Run workflow**, pick the branch, **Run workflow**.
+3. The run sets `REQUIRE_DB=1`, so a missing secret fails the run instead of skipping tests.
+   Everything the Google tests create sits in March to April 2031 and is deleted afterwards.
+
+Locally the same tests run with `uv run pytest -m "live_google or live_gemini"` (see
+[google-calendar.md](google-calendar.md)).
 
 ## Rollback
 

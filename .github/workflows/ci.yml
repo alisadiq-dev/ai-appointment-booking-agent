@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -94,26 +93,3 @@ jobs:
           exit 1
       - name: Container runs as a non-root user
         run: test "$(docker exec app id -u)" != "0"
-
-  # Real Google Calendar and Gemini. Runs only on trusted code (push to main, manual run): pull
-  # requests never get the secrets. If a secret is absent the matching tests skip (no REQUIRE_DB).
-  # One run at a time, because the Google tests share one test calendar.
-  live:
-    name: Live Google and Gemini tests
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    concurrency:
-      group: live-google-calendar
-    env:
-      GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
-      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: astral-sh/setup-uv@v10.2.0
-        with:
-          enable-cache: true
-      - run: uv sync
-      - name: pytest -m "live_google or live_gemini"
-        run: uv run pytest -m "live_google or live_gemini" --no-cov -v -rs
