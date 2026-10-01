@@ -59,11 +59,14 @@ Decisions (approved): conversation state lives in our own `conversation_sessions
 - Follow-up: Phase 6 requirements (one transaction per request, save the session only on success) are listed under Phase 6
 
 ## Phase 6: Chat API
-- [ ] POST /chat (load state, run graph, save state), in-memory rate limiting
-- [ ] **One database transaction per chat request**: one connection per request (like the booking routes), so a calendar or database error during the turn rolls back every write of that turn
-- [ ] **Save the session only when the turn succeeds**: if the graph raises (calendar or database failure), do not save or clear the state, so the customer can say yes again; answer 503 in the standard error format (covered by agent tests: a failed `execute` leaves the proposal in the session)
-- [ ] Business outcomes at execute (slot taken, booking cancelled meanwhile) are normal 200 replies, never 4xx or 5xx
-- [ ] Input length validation at the API (the agent already truncates to 1000 characters)
+Decisions (approved): per-user rate limit of 10 requests per 60 seconds, in memory and keyed by the JWT user id (not the IP), so it is per instance. `calendar_event_missing` stays a 409 whose message says to cancel and book again. One chat turn per user at a time via `pg_try_advisory_xact_lock` (non-blocking, two-key form, dedicated namespace constant), a second concurrent turn gets 409 `turn_in_progress`. The connection is held during the model call (documented trade-off).
+- [x] POST /chat (load state, run graph, save state), in-memory rate limiting (`docs/chat-api.md`)
+- [x] **One database transaction per chat request**: one connection per request, so a calendar or database error during the turn rolls back every write of that turn (proved on real Postgres)
+- [x] **Save the session only when the turn succeeds**: a failed turn leaves the stored proposal in place, so the customer can say yes again; 503 in the standard error format (tested over HTTP)
+- [x] Business outcomes at execute (slot taken, booking cancelled meanwhile) are normal 200 replies (tested over HTTP)
+- [x] Input length validation at the API (1 to 1000 characters after trimming, extra fields rejected, message never echoed in errors)
+- [x] Concurrent turns for the same user: second fails fast with 409 `turn_in_progress`, first is unharmed, other users are not blocked (tested; the test fails if the lock is removed)
+- Known limit: the limiter is per instance and resets on restart (Phase 8 pins Cloud Run to one instance)
 
 ## Phase 7: Hardening
 - [ ] Error handling, logging, input validation, OWASP API Top 10 review
@@ -76,6 +79,7 @@ Decisions (approved): conversation state lives in our own `conversation_sessions
 - [ ] CI must create `supabase/signing_keys.json` before `supabase start` (`echo '[]' > ...` then `supabase gen signing-key --algorithm ES256 --append`; see docs/local-supabase.md) and run `pytest -m local_supabase` with `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY`
 - [ ] Verify JWKS verification against a hosted Supabase project (asymmetric signing keys enabled) before relying on it in production
 - [ ] **CI must build the Docker image so it is verified before deploy** (Docker was never built locally before this phase; install Docker Desktop first)
+- [ ] **Cloud Run `--max-instances=1`**: the chat rate limiter is in memory and per instance (a user could exceed the limit across instances, and a restart resets it). Raise it only after moving the limiter to a shared store such as Redis (see docs/chat-api.md)
 - [ ] Check current Cloud Run free tier limits, deploy, verify /docs live
 
 ## Phase 9: Portfolio polish
