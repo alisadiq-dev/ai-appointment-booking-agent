@@ -55,10 +55,15 @@ Decisions (approved): conversation state lives in our own `conversation_sessions
 - [x] Session state reset when a booking is completed, rescheduled or cancelled (tested in memory and on Postgres)
 - [x] Gemini adapter (`google-genai`), safe fallback on every failure; live tests are opt-in (`pytest -m live_gemini`) and pass
 - Known limitation: confirmation words are English only (documented)
-- Follow-up (Phase 6): wire `BookingAgent` into `POST /chat` per request (one DB connection, so a calendar failure rolls back and the session is not saved); input length validation at the API
+- [x] Execute turns business outcomes (slot taken, booking cancelled meanwhile) into a friendly reply that clears the stale proposal and offers fresh slots; calendar and database errors still propagate (tested)
+- Follow-up: Phase 6 requirements (one transaction per request, save the session only on success) are listed under Phase 6
 
 ## Phase 6: Chat API
 - [ ] POST /chat (load state, run graph, save state), in-memory rate limiting
+- [ ] **One database transaction per chat request**: one connection per request (like the booking routes), so a calendar or database error during the turn rolls back every write of that turn
+- [ ] **Save the session only when the turn succeeds**: if the graph raises (calendar or database failure), do not save or clear the state, so the customer can say yes again; answer 503 in the standard error format (covered by agent tests: a failed `execute` leaves the proposal in the session)
+- [ ] Business outcomes at execute (slot taken, booking cancelled meanwhile) are normal 200 replies, never 4xx or 5xx
+- [ ] Input length validation at the API (the agent already truncates to 1000 characters)
 
 ## Phase 7: Hardening
 - [ ] Error handling, logging, input validation, OWASP API Top 10 review

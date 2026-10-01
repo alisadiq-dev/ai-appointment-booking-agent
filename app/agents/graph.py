@@ -37,6 +37,7 @@ from app.agents.model import (
     ModelUnavailableError,
 )
 from app.agents.session import SessionStorePort
+from app.core.errors import AppError
 from app.schemas.bookings import Booking
 from app.schemas.services import Service
 from app.schemas.time_range import TimeRange
@@ -434,20 +435,44 @@ class BookingAgent:
                 self._bookings.cancel_booking(user_id, UUID(pending["booking_id"]))
                 reply, outcome = "Done! Your booking has been cancelled.", "cancelled"
         except _FRIENDLY_ERRORS as exc:
-            # Nothing was written. (Calendar errors are not in this list: they propagate.)
-            if isinstance(exc, SlotUnavailableError):
-                draft.pop("time", None)
-            else:
-                draft = {}
-            return Command(
-                update={
-                    "reply": f"{exc.message} Nothing has been changed. What would you like to do?",
-                    "pending": None,
-                    "draft": draft,
-                },
-                goto=END,
-            )
+            return self._stale_proposal_reply(exc, pending, draft)
         return Command(
             update={"reply": reply, "outcome": outcome, "pending": None, "draft": {}},
             goto=END,
         )
+
+    def _stale_proposal_reply(
+        self, exc: AppError, pending: dict[str, Any], draft: dict[str, Any]
+    ) -> Command[Literal["__end__"]]:
+        """The world changed between proposal and yes (slot taken, booking cancelled meanwhile).
+
+        These are business outcomes, not failures: nothing was written, the stale proposal is
+        dropped and, where a new time makes sense, fresh free slots are offered. Calendar and
+        database errors never reach here; they propagate so the request rolls back.
+        """
+        service_id = pending.get("service_id")
+        offers_slots = pending.get("start_at") is not None and (
+            isinstance(exc, SlotUnavailableError | BookingNotActiveError)
+        )
+        text = f"{exc.message} Nothing has been changed. "
+        if not offers_slots or service_id is None:
+            return Command(
+                update={
+                    "reply": text + "What would you like to do?",
+                    "pending": None,
+                    "draft": {},
+                },
+                goto=END,
+            )
+        day = datetime.fromisoformat(pending["start_at"]).astimezone(self._zone).date()
+        slots = self._free_times(UUID(service_id), day)
+        if slots:
+            text += f"Free times that day: {self._format_free(slots)}. Which would you like?"
+        else:
+            text += "There are no free times that day. Which other date would you like?"
+        if isinstance(exc, SlotUnavailableError):
+            draft.pop("time", None)  # same booking and day, just pick another time
+            new_draft = draft
+        else:  # the booking is gone: continue as a fresh booking of the same service and day
+            new_draft = {"service_id": service_id, "date": day.isoformat()}
+        return Command(update={"reply": text, "pending": None, "draft": new_draft}, goto=END)

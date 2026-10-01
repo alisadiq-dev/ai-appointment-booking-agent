@@ -61,9 +61,15 @@ allow-list. Adding a language means adding its phrases to `app/agents/confirmati
 
 - **Gemini down, slow, invalid output, or no `GEMINI_API_KEY`**: the agent replies "Sorry, I can't
   process that right now. Nothing has been changed." and never guesses an intent.
-- **Business-rule errors at execute time** (slot taken meanwhile, booking already cancelled ...)
-  become a friendly reply, nothing is written, and the proposal is dropped.
-- **Calendar failures** are not caught. They may happen after the database write, so they
+- **The world changed between proposal and yes** (someone took the slot, or the booking was
+  cancelled meanwhile: `SlotUnavailableError`, `BookingNotActiveError`) is a business outcome, not
+  a failure. Nothing is written, the stale proposal is cleared and the reply offers fresh free
+  slots for the same service and day. After a taken slot the conversation continues (same
+  booking, pick another time); after a vanished booking it continues as a fresh booking of that
+  service and day. Other rule errors (booking not found, past, outside hours ...) give a friendly
+  reply and reset the draft.
+- **Infrastructure failures** (calendar or database errors, including while listing the fresh
+  slots) are not caught. They may happen after the database write, so they
   propagate and the request's transaction rolls back (strict sync, see
   [google-calendar.md](google-calendar.md)). The conversation state is saved only when the turn
   succeeds, so the customer can simply say yes again.
