@@ -8,8 +8,10 @@ from uuid import UUID
 from app.repositories.errors import SlotTakenError
 from app.schemas.bookings import Booking
 from app.schemas.business_hours import BusinessHour
+from app.schemas.calendar import CalendarEvent
 from app.schemas.services import Service
 from app.schemas.time_range import TimeRange
+from app.services.errors import CalendarEventNotFoundError, CalendarUnavailableError
 
 
 class InMemoryBookingRepository:
@@ -23,21 +25,36 @@ class InMemoryBookingRepository:
         )
 
     def create(
-        self, user_id: UUID, service_id: UUID, start_at: datetime, end_at: datetime
+        self,
+        user_id: UUID,
+        service_id: UUID,
+        start_at: datetime,
+        end_at: datetime,
+        *,
+        booking_id: UUID | None = None,
+        google_event_id: str | None = None,
     ) -> Booking:
         if self._conflicts(start_at, end_at):
             raise SlotTakenError
         booking = Booking(
-            id=uuid.uuid4(),
+            id=booking_id or uuid.uuid4(),
             user_id=user_id,
             service_id=service_id,
             start_at=start_at,
             end_at=end_at,
             status="confirmed",
-            google_event_id=None,
+            google_event_id=google_event_id,
         )
         self.rows[booking.id] = booking
         return booking
+
+    def snapshot(self) -> dict[UUID, Booking]:
+        """Emulates the start of the request transaction (see Harness.request)."""
+        return dict(self.rows)
+
+    def restore(self, snapshot: dict[UUID, Booking]) -> None:
+        """Emulates the request transaction rolling back."""
+        self.rows = dict(snapshot)
 
     def get_for_user(self, booking_id: UUID, user_id: UUID) -> Booking | None:
         booking = self.rows.get(booking_id)
@@ -102,11 +119,53 @@ class InMemoryBusinessHoursRepository:
 
 
 class InMemoryProfileRepository:
-    def __init__(self, roles: dict[UUID, str]) -> None:
+    def __init__(self, roles: dict[UUID, str], names: dict[UUID, str | None] | None = None) -> None:
         self._roles = roles
+        self._names = names or {}
 
     def get_role(self, user_id: UUID) -> str | None:
         return self._roles.get(user_id)
+
+    def get_full_name(self, user_id: UUID) -> str | None:
+        return self._names.get(user_id)
+
+
+class FakeCalendar:
+    """Records calls and can simulate Google failures, missing events and manual busy time."""
+
+    def __init__(self) -> None:
+        self.events: dict[str, CalendarEvent] = {}
+        self.manual_busy: list[TimeRange] = []
+        self.failing: set[str] = set()  # operation names that raise CalendarUnavailableError
+        self.gone: set[str] = set()  # event ids deleted by hand: updates raise not-found
+        self.calls: list[str] = []
+
+    def _enter(self, operation: str) -> None:
+        self.calls.append(operation)
+        if operation in self.failing:
+            raise CalendarUnavailableError
+
+    def create_event(self, event: CalendarEvent) -> str:
+        self._enter("create_event")
+        self.events[event.booking_id.hex] = event
+        return event.booking_id.hex
+
+    def update_event(self, event_id: str, start: datetime, end: datetime) -> None:
+        self._enter("update_event")
+        event = self.events.get(event_id)
+        if event is None or event_id in self.gone:
+            raise CalendarEventNotFoundError(event_id)
+        self.events[event_id] = CalendarEvent(
+            event.booking_id, event.summary, event.description, start, end
+        )
+
+    def delete_event(self, event_id: str) -> None:
+        self._enter("delete_event")
+        self.events.pop(event_id, None)
+
+    def list_busy(self, start: datetime, end: datetime) -> list[TimeRange]:
+        self._enter("list_busy")
+        return [r for r in self.manual_busy if r.overlaps(start, end)]
 
 
 def make_service(name: str = "Haircut", minutes: int = 30) -> Service:

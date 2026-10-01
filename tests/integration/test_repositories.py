@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import psycopg.errors
 import pytest
 
 from app.repositories.bookings import BookingRepository
@@ -38,6 +39,36 @@ def test_create_returns_a_confirmed_utc_booking(conn: Conn) -> None:
     assert booking.start_at == at(10)
     assert booking.end_at == at(10, 30)
     assert booking.start_at.utcoffset() == timedelta(0)
+
+
+def test_create_can_use_a_caller_chosen_id_and_google_event_id(conn: Conn) -> None:
+    repo = BookingRepository(conn)
+    user, service = make_user(conn), make_service(conn)
+    booking_id = uuid4()
+
+    booking = repo.create(
+        user,
+        service,
+        at(10),
+        at(10, 30),
+        booking_id=booking_id,
+        google_event_id=booking_id.hex,
+    )
+
+    assert booking.id == booking_id
+    assert booking.google_event_id == booking_id.hex
+    stored = repo.get_for_user(booking_id, user)
+    assert stored is not None
+    assert stored.google_event_id == booking_id.hex
+
+
+def test_two_bookings_cannot_share_a_google_event_id(conn: Conn) -> None:
+    repo = BookingRepository(conn)
+    user, service = make_user(conn), make_service(conn)
+    repo.create(user, service, at(10), at(10, 30), google_event_id="shared-event-id")
+
+    with pytest.raises(psycopg.errors.UniqueViolation):
+        repo.create(user, service, at(12), at(12, 30), google_event_id="shared-event-id")
 
 
 def test_get_for_user_returns_only_the_owners_booking(conn: Conn) -> None:
@@ -246,6 +277,18 @@ def test_business_hours_repository_returns_the_seeded_week_in_order(conn: Conn) 
     assert [h.day_of_week for h in hours] == [1, 2, 3, 4, 5, 6, 7]
     assert hours[6].open_time is None  # Sunday closed
     assert hours[0].open_time is not None
+
+
+def test_profile_repository_returns_the_full_name_or_none(conn: Conn) -> None:
+    repo = ProfileRepository(conn)
+    named = make_user(conn, full_name="  Alice Khan ")
+    unnamed = make_user(conn)
+    blank = make_user(conn, full_name="   ")
+
+    assert repo.get_full_name(named) == "Alice Khan"
+    assert repo.get_full_name(unnamed) is None
+    assert repo.get_full_name(blank) is None
+    assert repo.get_full_name(uuid4()) is None
 
 
 def test_profile_repository_returns_roles(conn: Conn) -> None:

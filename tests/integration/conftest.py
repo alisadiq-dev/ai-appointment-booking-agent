@@ -1,3 +1,4 @@
+import json
 import os
 import uuid
 from collections.abc import Iterator
@@ -24,12 +25,13 @@ def conn() -> Iterator[Conn]:
     connection.close()
 
 
-def make_user(conn: Conn, *, role: str = "customer") -> uuid.UUID:
+def make_user(conn: Conn, *, role: str = "customer", full_name: str | None = None) -> uuid.UUID:
     """Insert an auth user (the signup trigger creates the profile) and set its role."""
     user_id = uuid.uuid4()
+    metadata = {"full_name": full_name} if full_name is not None else {}
     conn.execute(
-        "insert into auth.users (id, email) values (%s, %s)",
-        (user_id, f"{user_id}@example.test"),
+        "insert into auth.users (id, email, raw_user_meta_data) values (%s, %s, %s::jsonb)",
+        (user_id, f"{user_id}@example.test", json.dumps(metadata)),
     )
     if role != "customer":
         conn.execute("update public.profiles set role = %s where id = %s", (role, user_id))

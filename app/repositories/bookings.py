@@ -56,13 +56,21 @@ class BookingRepository:
         raise AssertionError("unreachable")  # pragma: no cover
 
     def create(
-        self, user_id: UUID, service_id: UUID, start_at: datetime, end_at: datetime
+        self,
+        user_id: UUID,
+        service_id: UUID,
+        start_at: datetime,
+        end_at: datetime,
+        *,
+        booking_id: UUID | None = None,
+        google_event_id: str | None = None,
     ) -> Booking:
         row = self._write_returning_row(
-            "insert into public.bookings (user_id, service_id, start_at, end_at) "
-            "values (%s, %s, %s, %s) "
+            "insert into public.bookings "
+            "(id, user_id, service_id, start_at, end_at, google_event_id) "
+            "values (coalesce(%s::uuid, gen_random_uuid()), %s, %s, %s, %s, %s) "
             "returning id, user_id, service_id, start_at, end_at, status, google_event_id",
-            (user_id, service_id, start_at, end_at),
+            (booking_id, user_id, service_id, start_at, end_at, google_event_id),
         )
         assert row is not None  # noqa: S101 - INSERT ... RETURNING always yields a row
         return Booking.model_validate(row)

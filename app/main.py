@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.deps import get_calendar
 from app.api.routers import admin, bookings, catalog, health
 from app.core.config import get_settings
 from app.core.db import create_pool
@@ -22,6 +23,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         logger.warning("DATABASE_URL is not configured; database-backed endpoints return 503")
     app.state.pool = pool
+    if settings.calendar_enabled:
+        get_calendar()  # builds the Google client now, so a bad key stops startup (fail fast)
+    else:
+        logger.warning(
+            "CALENDAR_ENABLED is false: bookings are NOT synced to Google Calendar "
+            "(must be true in production)"
+        )
     try:
         yield
     finally:

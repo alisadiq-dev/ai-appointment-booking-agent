@@ -1,32 +1,13 @@
-import json
 import threading
 from zoneinfo import ZoneInfo
 
 import pytest
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 from google_auth_httplib2 import AuthorizedHttp
 from googleapiclient.http import HttpMockSequence
 
 from app.core.config import Settings
 from app.integrations.google_calendar import SCOPES, GoogleCalendar
-
-
-def _fake_service_account_json() -> str:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    pem = key.private_bytes(
-        serialization.Encoding.PEM,
-        serialization.PrivateFormat.PKCS8,
-        serialization.NoEncryption(),
-    ).decode()
-    return json.dumps(
-        {
-            "type": "service_account",
-            "client_email": "svc@example.iam.gserviceaccount.com",
-            "private_key": pem,
-            "token_uri": "https://oauth2.googleapis.com/token",
-        }
-    )
+from tests.google_helpers import fake_service_account_json
 
 
 def test_from_settings_builds_a_service_account_client_with_least_privilege_scope(
@@ -34,7 +15,7 @@ def test_from_settings_builds_a_service_account_client_with_least_privilege_scop
 ) -> None:
     monkeypatch.setenv("CALENDAR_ENABLED", "true")
     monkeypatch.setenv("GOOGLE_CALENDAR_ID", "cal@group.calendar.google.com")
-    monkeypatch.setenv("GOOGLE_SERVICE_ACCOUNT_JSON", _fake_service_account_json())
+    monkeypatch.setenv("GOOGLE_SERVICE_ACCOUNT_JSON", fake_service_account_json())
     monkeypatch.setenv("BUSINESS_TIMEZONE", "Asia/Karachi")
     monkeypatch.setenv("CALENDAR_TIMEOUT_SECONDS", "7")
     monkeypatch.setenv("CALENDAR_NUM_RETRIES", "2")
@@ -74,6 +55,9 @@ def test_http_objects_are_created_once_per_thread_and_reused() -> None:
     assert len(created[1].request_sequence) == 1
 
 
-def test_from_settings_requires_the_configuration() -> None:
+def test_from_settings_requires_the_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GOOGLE_CALENDAR_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_SERVICE_ACCOUNT_JSON", raising=False)
+
     with pytest.raises(ValueError, match="required"):
         GoogleCalendar.from_settings(Settings(_env_file=None, calendar_enabled=False))

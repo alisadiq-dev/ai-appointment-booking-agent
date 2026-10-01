@@ -54,5 +54,16 @@ class CalendarUnavailableError(AppError):
         super().__init__("calendar_unavailable", "The calendar is temporarily unavailable.", 503)
 
 
+class CalendarEventMissingError(AppError):
+    """The booking's calendar entry no longer exists, so it cannot be moved."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "calendar_event_missing",
+            "This booking's calendar entry no longer exists. Please cancel it and book again.",
+            409,
+        )
+
+
 class CalendarEventNotFoundError(Exception):
     """The calendar has no (live) event with that id, e.g. it was deleted by hand."""
