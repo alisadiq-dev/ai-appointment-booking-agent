@@ -90,7 +90,7 @@ Decisions (approved): deploy the existing Dockerfile to a free host. GCP Cloud R
 - [x] CI creates `supabase/signing_keys.json` before `supabase start` and runs `pytest -m local_supabase`
 - [x] **CI builds the Docker image, smoke-tests `/health` and checks it runs as non-root**
 - [x] Live Google and Gemini tests live in a manual workflow (`live.yml`, `workflow_dispatch`, fails if a secret is missing) so they never gate a deploy or spend quota on every push
-- [ ] Run `live.yml` once from the Actions tab (it needs the three live secrets; they exist)
+- [x] Run `live.yml` once from the Actions tab: run 36876498011 passed (2026-10-01)
 - [x] Manual production migrations workflow (`migrate-production.yml`, dry run by default); applied 2026-10-01 and verified read-only (5 tables, RLS on all, `anon` has no privileges, 4 services, 7 business-hour rows)
 - [x] Hosted Supabase project `dhovoboznckrknphwpir` (Singapore): Data API off, ES256 signing key served at the JWKS URL, anonymous sign-ins off, sign-ups closed, confirm email on; two demo users (customer and admin) created
 - [x] Deployed to SnapDeploy: https://ai-booking-agent-68b73.containers.snapdeploy.app (`/health` and `/docs` verified, `CALENDAR_ENABLED=true`, 10 environment variables); `render.yaml` removed (never used)
@@ -102,6 +102,7 @@ Decisions (approved): deploy the existing Dockerfile to a free host. GCP Cloud R
 - [x] Redeploy from the SnapDeploy dashboard (toggle Auto Deploy on, push an empty commit, toggle off; docs/deploy.md): done 2026-10-01 and the `Strict-Transport-Security` header is confirmed live. SnapDeploy had overridden `APP_ENV` and `CALENDAR_ENABLED` from `.env.example`; both were corrected by hand. The 503s seen afterwards were the rolling restart. The next deploy (after the quota resets) ships the docs-only PRs #11 and #12
 
 ## Phase 9: Portfolio polish
-- [ ] README (diagrams, setup, env vars, API examples), sample curl requests, demo script
-- [ ] README does not exist yet: include the live URL, the SnapDeploy deploy notes (free tier, cold start of about 30 s, manual deploys after CI is green) and a pointer to docs/deploy.md
-- [ ] Demo token script: password grant for a hand-made demo user (sign-ups are closed in production), credentials from a local secrets file, sends `apikey` (publishable key) and a normal `User-Agent` (Cloudflare blocks the Python default), prints only the access token (see docs/deploy.md)
+- [x] README with the live URL, cold-start note, Mermaid architecture and agent graph, stack, confirmation gate and security, local setup, tests, API examples and engineering highlights; pointer to docs/deploy.md
+- [x] Demo script: docs/demo-script.md (2 minutes)
+- [x] Demo token script: `scripts/get_demo_token.py` (password grant, `apikey` and a normal `User-Agent`, prints only the token, `--admin`, `--length-only`); checked live read-only for the customer and admin users, no bookings created
+- [ ] Record the demo video (needs a hand-made cross-user booking id, see the notes in docs/demo-script.md)
