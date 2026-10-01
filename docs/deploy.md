@@ -61,7 +61,8 @@ dashboard on first creation and they never enter the repository.
    would answer 503.
 3. *Authentication, Sign In / Providers* (checked 2026-10-01): anonymous sign-ins **off**,
    "Allow new users to sign up" **off** (sign-ups are closed for the portfolio demo), "Confirm
-   email" **on**, Auth rate limits at their defaults. The API rejects anonymous tokens anyway.
+   email" **on**, manual identity linking **off**, the Email provider **enabled** (hand-made demo users
+   sign in with a password), Auth rate limits at their defaults. The API rejects anonymous tokens anyway.
 4. Apply the schema with the manual **Production migrations** workflow (`supabase db push`).
 5. **Only after step 4**, create the 1 to 2 demo users by hand (*Authentication, Users, Add user*,
    with "Auto Confirm User" ticked, since sign-up and confirmation emails are not in play).

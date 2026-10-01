@@ -70,8 +70,9 @@ its variants); `integration/test_auth_dependency.py` (HTTP level, JWKS down, slo
 
 **Production settings (hosted project, checked 2026-10-01).** Anonymous sign-ins off, **new-user
 sign-up off** (the 1 to 2 demo users are created by hand in the dashboard, so nobody can mass
-register accounts to get around the per-user limits in API4 and API6), "Confirm email" on, Auth
-rate limits at the defaults. Demo tokens come from a password-grant script that prints only the
+register accounts to get around the per-user limits in API4 and API6), "Confirm email" on, manual
+identity linking off, the Email provider enabled (for the hand-made demo users), Auth rate limits
+at the defaults. Demo tokens come from a password-grant script that prints only the
 access token (see [deploy.md](deploy.md)); its credentials live in a local env file outside the
 repo, never in git, Render or GitHub.
 
