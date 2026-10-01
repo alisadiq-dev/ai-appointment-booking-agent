@@ -13,5 +13,6 @@ RUN useradd --create-home --uid 10001 appuser
 COPY --from=builder --chown=appuser /app/.venv /app/.venv
 COPY --chown=appuser app ./app
 USER appuser
-# Render injects $PORT (default 10000); default to 8080 for local runs.
+# The host may inject $PORT; default to 8080 (SnapDeploy is configured for 8080).
+EXPOSE 8080
 CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
