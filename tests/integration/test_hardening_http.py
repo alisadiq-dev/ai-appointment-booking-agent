@@ -171,3 +171,34 @@ def test_malformed_booking_ids_are_422_not_500(client: TestClient, path: str) ->
 
     assert response.status_code in (404, 422)
     assert set(response.json()) == {"error"}
+
+
+# ------------------------------------------------------------------ object properties (API3)
+
+MONDAY_10 = "2026-10-05T05:00:00+00:00"  # 10:00 in Karachi
+
+
+def test_customer_booking_responses_expose_only_the_public_fields(client: TestClient) -> None:
+    created = client.post(
+        "/bookings", json={"service_id": str(HAIRCUT.id), "start_at": MONDAY_10}, headers=AS_USER
+    )
+    listed = client.get("/bookings", headers=AS_USER)
+
+    assert created.status_code == 201
+    public = {"id", "service_id", "start_at", "end_at", "status"}
+    assert set(created.json()) == public  # no user_id, no google_event_id
+    assert [set(item) for item in listed.json()] == [public]
+
+
+@pytest.mark.parametrize(
+    "extra", [{"user_id": str(uuid.uuid4())}, {"status": "cancelled"}, {"role": "admin"}]
+)
+def test_unknown_body_fields_are_refused_not_ignored(
+    client: TestClient, extra: dict[str, str]
+) -> None:
+    body = {"service_id": str(HAIRCUT.id), "start_at": MONDAY_10, **extra}
+
+    response = client.post("/bookings", json=body, headers=AS_USER)
+
+    assert response.status_code == 422
+    assert _error_code(response) == "validation_error"
