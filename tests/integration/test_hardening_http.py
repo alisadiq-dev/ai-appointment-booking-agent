@@ -2,6 +2,7 @@
 
 import json
 import uuid
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -11,7 +12,8 @@ from fastapi import Request
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_booking_service, get_current_user
-from app.core.hardening import MAX_BODY_BYTES
+from app.core.config import get_settings
+from app.core.hardening import HSTS_VALUE, MAX_BODY_BYTES
 from app.core.security import AuthUser
 from app.main import create_app
 from app.schemas.business_hours import BusinessHour
@@ -83,6 +85,40 @@ def test_security_headers_are_on_a_500_too() -> None:
 
     assert response.status_code == 500
     assert response.headers["x-content-type-options"] == "nosniff"
+
+
+@pytest.fixture
+def app_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[str], TestClient]]:
+    """Builds the app as if APP_ENV were set to the given value (settings are cached)."""
+
+    def build(value: str) -> TestClient:
+        monkeypatch.setenv("APP_ENV", value)
+        get_settings.cache_clear()
+        return TestClient(create_app(), raise_server_exceptions=False)
+
+    yield build
+    get_settings.cache_clear()
+
+
+def test_hsts_is_sent_in_production_on_every_response(
+    app_env: Callable[[str], TestClient],
+) -> None:
+    client = app_env("production")
+
+    for path in ("/health", "/nope", "/bookings"):  # 200, 404 and 401
+        assert client.get(path).headers["strict-transport-security"] == HSTS_VALUE
+
+
+def test_hsts_is_short_and_has_no_subdomains_or_preload() -> None:
+    # A wrong HSTS value sticks in browsers: start short, no includeSubDomains, no preload.
+    assert HSTS_VALUE == "max-age=300"
+
+
+@pytest.mark.parametrize("env", ["development", "test"])
+def test_hsts_is_not_sent_outside_production(
+    app_env: Callable[[str], TestClient], env: str
+) -> None:
+    assert "strict-transport-security" not in app_env(env).get("/health").headers
 
 
 def test_the_interactive_docs_still_work(client: TestClient) -> None:

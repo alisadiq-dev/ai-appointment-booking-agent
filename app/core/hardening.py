@@ -19,14 +19,23 @@ SECURITY_HEADERS = {
     "X-Frame-Options": "DENY",
 }
 
+# Sent only in production (the app sits behind the host's HTTPS proxy). Deliberately short and
+# without includeSubDomains or preload: browsers cache it, so a mistake must expire quickly.
+# Raise the max-age step by step (a day, a week, ...) once nothing breaks.
+HSTS_VALUE = "max-age=300"
+
 _TOO_LARGE_BODY = json.dumps(
     {"error": {"code": "payload_too_large", "message": "The request body is too large."}}
 ).encode()
 
 
 class SecurityHeadersMiddleware:
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, hsts: bool = False) -> None:
         self.app = app
+        self.headers = {
+            **SECURITY_HEADERS,
+            **({"Strict-Transport-Security": HSTS_VALUE} if hsts else {}),
+        }
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -36,7 +45,7 @@ class SecurityHeadersMiddleware:
         async def send_with_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
-                for name, value in SECURITY_HEADERS.items():
+                for name, value in self.headers.items():
                     headers[name] = value
             await send(message)
 

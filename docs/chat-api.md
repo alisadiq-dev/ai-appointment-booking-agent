@@ -69,7 +69,7 @@ an orphan calendar event is left behind. It carries the booking id in its privat
   for free.
 - **The limit is per instance.** The counters live in the memory of one process. With N instances
   each keeps its own counters, so a user could send up to N times the limit, and a restart resets
-  them. The deployment therefore runs a single instance (Render's free plan allows only one,
+  them. The deployment therefore runs a single instance (the SnapDeploy free tier is one container,
   see [deploy.md](deploy.md)). Moving to several instances needs a shared store (for example Redis).
 
 ## One turn per user at a time

@@ -1,7 +1,7 @@
 name: Live tests (Google Calendar and Gemini)
 
 # Manual only: run from the Actions tab (Live tests, Run workflow). Kept out of ci.yml so it never
-# gates Render's checksPass, and so pushes do not spend Gemini quota or touch the real calendar.
+# gates a deploy, and so pushes do not spend Gemini quota or touch the real calendar.
 on:
   workflow_dispatch:
 

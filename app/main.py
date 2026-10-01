@@ -47,7 +47,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     # The last one added is the outermost: the request id and access log wrap everything else.
     app.add_middleware(BodySizeLimitMiddleware)
-    app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware, hsts=get_settings().app_env == "production")
     app.add_middleware(RequestContextMiddleware)
     app.include_router(health.router)
     app.include_router(catalog.router)
