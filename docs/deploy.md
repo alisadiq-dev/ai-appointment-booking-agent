@@ -86,6 +86,35 @@ The set is 10 variables in total (6 plus 4 secrets).
    that the `RUN --mount=type=cache` line in the Dockerfile works there.
 4. Verify `GET /health`, `/docs`, and a real token (see Live verification).
 
+## Redeploying, and the SnapDeploy environment trap
+
+Auto Deploy on Push stays **off**, so a redeploy is a deliberate three-step routine (used on
+2026-10-01 to ship HSTS):
+
+1. In the SnapDeploy dashboard, switch **Auto Deploy on Push** on.
+2. Push a commit to `main` (an empty one is enough: `git commit --allow-empty -m "chore: trigger
+   SnapDeploy redeploy" && git push`), after CI is green on the code you want live.
+3. Switch **Auto Deploy on Push** off again. Do not leave it on: it would deploy commits that
+   CI has not passed.
+
+**SnapDeploy auto-detects environment variables from the repository and can override the values
+you set in the dashboard.** On the 2026-10-01 redeploy it replaced `APP_ENV` with `development`
+(which silently turns HSTS off). The likely source is `.env.example`, which holds development
+values (`APP_ENV=development`, `CALENDAR_ENABLED=false`, a local `SUPABASE_URL` and
+`DATABASE_URL`), but that has not been confirmed. **After every deploy, open the environment
+variables and check all ten**, above all:
+
+- `APP_ENV` = `production` (otherwise no HSTS)
+- `CALENDAR_ENABLED` = `true` (otherwise bookings are not synced to Google Calendar; the app only
+  logs a warning)
+- `SUPABASE_URL` is the hosted project URL, not `http://127.0.0.1:54321`
+- `DATABASE_URL` is the session pooler string, not the local one (a wrong value does not stop
+  the app starting: database requests answer 503)
+- `DB_POOL_MAX_SIZE` = `5`
+
+Then check `GET /health` and the `Strict-Transport-Security` header
+(`curl -sI -A curl/8 <url>/health` returns 405 for HEAD, use `curl -s -D - -o /dev/null <url>/health`).
+
 ## Live verification (2026-10-01)
 
 - `GET /health` answers `{"status":"ok"}` (the first call after sleep took about 29 s) and

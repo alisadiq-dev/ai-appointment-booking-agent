@@ -98,7 +98,7 @@ Decisions (approved): deploy the existing Dockerfile to a free host. GCP Cloud R
 - [x] HSTS (`max-age=300`, production only) once HTTPS was confirmed on the live URL (tested; live after the next manual deploy)
 - [x] Document the single container (satisfies the in-memory chat rate limiter), the cold start (about 29 s measured) and the free-tier limits in docs/deploy.md
 - [x] Real hosted tokens verified against the hosted JWKS (ES256); live `GET /bookings` 200 for customer and admin, `GET /admin/bookings` 403 for the customer and 200 for the admin; no bookings created. Note: Cloudflare in front of SnapDeploy blocks Python's default User-Agent (403, error code 1010), so scripts must set one (docs/deploy.md)
-- [ ] Redeploy from the SnapDeploy dashboard after this PR is merged and CI is green, then check the `Strict-Transport-Security` header live
+- [ ] Redeploy from the SnapDeploy dashboard (toggle Auto Deploy on, push an empty commit, toggle off; docs/deploy.md) and check the `Strict-Transport-Security` header live. Redeployed on 2026-10-01 and `APP_ENV` corrected to `production` by hand (SnapDeploy had overridden it), but the live URL answered 503 when checked afterwards, so the header is not yet confirmed
 
 ## Phase 9: Portfolio polish
 - [ ] README (diagrams, setup, env vars, API examples), sample curl requests, demo script
