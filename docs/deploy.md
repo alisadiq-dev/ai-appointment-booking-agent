@@ -3,7 +3,13 @@
 The API runs as a Docker web service on **Render's free plan** (region Singapore), built from the
 repo's `Dockerfile`. The database and auth are a **hosted Supabase free project** (Singapore).
 Render deploys automatically, but only after the GitHub checks on `main` pass
-(`autoDeployTrigger: checksPass` in `render.yaml`).
+(auto-deploy **After CI Checks Pass**, `autoDeployTrigger: checksPass` in `render.yaml`).
+
+> **`render.yaml` documents the intended configuration, but the service was created manually in
+> the Render dashboard**, because Render requires a payment method to create a Blueprint (the
+> free web service itself does not). The blueprint is therefore **not synced**: changing
+> `render.yaml` changes nothing on Render. Every setting below has to be changed in the
+> dashboard too, and the two should be kept identical by hand.
 
 ## What the free plan means for this app
 
@@ -39,7 +45,8 @@ re-check the pool size before raising `DB_POOL_MAX_SIZE`.
 
 ## Environment variables
 
-Set in [render.yaml](../render.yaml) (not secret, committed):
+Listed in [render.yaml](../render.yaml) (not secret, committed). Because the service was created
+manually, **enter these in the dashboard yourself**:
 
 | Variable | Value |
 |---|---|
@@ -50,8 +57,8 @@ Set in [render.yaml](../render.yaml) (not secret, committed):
 | `DB_POOL_MAX_SIZE` | `5` |
 | `CALENDAR_ENABLED` | **`true`** (the app refuses to start without the two Google values) |
 
-Entered **by hand in the Render dashboard** (`sync: false` in the blueprint, so they never enter
-the repository):
+Secrets (`sync: false` in the blueprint, so they never enter the repository), also entered in the
+dashboard:
 
 | Variable | What it is |
 |---|---|
@@ -60,6 +67,24 @@ the repository):
 | `GEMINI_API_KEY` | Google AI Studio key (without it the agent only sends the fallback reply) |
 
 `PORT` is set by Render; the Dockerfile reads it.
+
+## Service settings entered by hand
+
+| Dashboard field | Value |
+|---|---|
+| Source | the GitHub repo `alisadiq-dev/ai-appointment-booking-agent` |
+| Name | `ai-appointment-booking-agent` |
+| Language / runtime | **Docker** |
+| Branch | `main` |
+| Region | **Singapore** |
+| Root directory | empty |
+| Dockerfile path | `./Dockerfile` (the default) |
+| Docker build context | `.` (the default) |
+| Docker command | empty (the Dockerfile's `CMD` starts uvicorn on `$PORT`) |
+| Instance type | **Free** (this also fixes the instance count at 1) |
+| Health check path (Advanced) | `/health` |
+| Auto-Deploy (Advanced) | **After CI Checks Pass** |
+| Environment variables | the two tables above |
 
 ## First deploy, in order
 
@@ -70,7 +95,8 @@ the repository):
    **ticked** (the seed is repeat safe). A permission error here means the access token scope
    needs a look; do not widen it blindly.
 3. Create the demo users in the Supabase dashboard (after the migrations, see below).
-4. **Render**: *New, Blueprint*, connect the repo, branch `main`, enter the four secrets, Apply.
+4. **Render**: *New, Web Service* (Blueprints need a payment method, see the note at the top),
+   with the settings from the next section.
 5. Verify `https://<service>.onrender.com/health` and `/docs`, then a real chat turn with a demo
    token. Confirm HTTPS, then add HSTS (tasks.md).
 

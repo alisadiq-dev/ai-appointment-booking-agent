@@ -1,4 +1,6 @@
 # Render Blueprint: one free Docker web service. Docs: docs/deploy.md
+# NOTE: the service was created MANUALLY in the dashboard (Blueprints need a payment method), so
+# this file documents the intended settings and is not synced. Change both together.
 services:
   - type: web
     name: ai-appointment-booking-agent

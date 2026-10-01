@@ -91,7 +91,7 @@ Decisions (approved): deploy to Render's free web service from the existing Dock
 - [x] **CI sets `REQUIRE_DB=1`** plus `DATABASE_URL`, `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`, so missing configuration fails the DB-backed and real-GoTrue tests instead of skipping them (see docs/local-supabase.md)
 - [x] CI must create `supabase/signing_keys.json` before `supabase start` (`echo '[]' > ...` then `supabase gen signing-key --algorithm ES256 --append`; see docs/local-supabase.md) and run `pytest -m local_supabase` with `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY`
 - [x] **CI must build the Docker image and smoke-test `/health`, so it is verified before deploy**
-- [x] `render.yaml` blueprint: Docker runtime, free plan, Singapore, one instance, health check `/health`, `autoDeployTrigger: checksPass`, `CALENDAR_ENABLED=true`, `DB_POOL_MAX_SIZE=5`, all secrets `sync: false`
+- [x] `render.yaml` blueprint (documents the intended config; the service is created manually in the dashboard because Blueprints need a payment method): Docker runtime, free plan, Singapore, one instance, health check `/health`, `autoDeployTrigger: checksPass`, `CALENDAR_ENABLED=true`, `DB_POOL_MAX_SIZE=5`, all secrets `sync: false`
 - [x] Manual workflow (`workflow_dispatch`) that runs `supabase link` and `supabase db push` against the hosted project
 - [x] Hosted Supabase project `dhovoboznckrknphwpir` (Singapore) created: Data API off, ES256 signing key active and served at the JWKS URL, anonymous sign-ins off, sign-ups closed, confirm email on
 - [ ] Verify a real hosted user token against the JWKS (after migrations and a hand-made demo user)
