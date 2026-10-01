@@ -42,9 +42,17 @@ commits only if the request succeeds (before the response is sent) and rolls bac
   customer just says "yes" again.
 - Business outcomes never raise: they are replies, committed normally (the stale proposal is
   cleared and fresh slots are offered).
-- `calendar_event_missing` is raised after the database change, so it also rolls back. Its message
-  tells the customer to cancel the booking and book again. The open proposal remains, so answer
-  "no" first, then ask to cancel, then book again.
+- `calendar_event_missing` is raised after the database change, so it also rolls back. In chat its
+  message spells out the full recovery path: *"This booking's calendar entry is missing. Reply 'no'
+  to clear the pending change, then ask to cancel it and book again."* (the proposal stays open
+  because the turn was rolled back, so it must be answered first). The booking REST routes keep
+  the shorter default wording, since they have no pending change.
+
+Known limit (ordering): FastAPI resolves the dependencies even when the body is invalid, so a
+request with an invalid body (422) still counts against the rate limit, takes a pooled connection
+and the user's turn lock for an instant before being rejected. This is bounded by the rate limit
+and the lock, and invalid requests being rate limited is intended, so it is accepted rather than
+restructured.
 
 Known limit (from Phase 4): if the database commit itself fails after Google accepted a create,
 an orphan calendar event is left behind. It carries the booking id in its private properties.

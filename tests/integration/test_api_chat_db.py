@@ -184,7 +184,10 @@ def test_a_booking_whose_calendar_event_was_deleted_by_hand_is_409_with_next_ste
     assert failed.status_code == 409
     error = failed.json()["error"]
     assert error["code"] == "calendar_event_missing"
-    assert "cancel it and book again" in error["message"]
+    assert error["message"] == (
+        "This booking's calendar entry is missing. Reply 'no' to clear the pending change, "
+        "then ask to cancel it and book again."
+    )
     [after] = s.bookings(s.alice)
     assert after["start_at"] == before["start_at"]  # rolled back, not half-moved
 

@@ -59,7 +59,7 @@ Decisions (approved): conversation state lives in our own `conversation_sessions
 - Follow-up: Phase 6 requirements (one transaction per request, save the session only on success) are listed under Phase 6
 
 ## Phase 6: Chat API
-Decisions (approved): per-user rate limit of 10 requests per 60 seconds, in memory and keyed by the JWT user id (not the IP), so it is per instance. `calendar_event_missing` stays a 409 whose message says to cancel and book again. One chat turn per user at a time via `pg_try_advisory_xact_lock` (non-blocking, two-key form, dedicated namespace constant), a second concurrent turn gets 409 `turn_in_progress`. The connection is held during the model call (documented trade-off).
+Decisions (approved): per-user rate limit of 10 requests per 60 seconds, in memory and keyed by the JWT user id (not the IP), so it is per instance. `calendar_event_missing` stays a 409 whose message (in chat) spells out the recovery: reply 'no', then ask to cancel and book again. One chat turn per user at a time via `pg_try_advisory_xact_lock` (non-blocking, two-key form, dedicated namespace constant), a second concurrent turn gets 409 `turn_in_progress`. The connection is held during the model call (documented trade-off).
 - [x] POST /chat (load state, run graph, save state), in-memory rate limiting (`docs/chat-api.md`)
 - [x] **One database transaction per chat request**: one connection per request, so a calendar or database error during the turn rolls back every write of that turn (proved on real Postgres)
 - [x] **Save the session only when the turn succeeds**: a failed turn leaves the stored proposal in place, so the customer can say yes again; 503 in the standard error format (tested over HTTP)
@@ -67,6 +67,7 @@ Decisions (approved): per-user rate limit of 10 requests per 60 seconds, in memo
 - [x] Input length validation at the API (1 to 1000 characters after trimming, extra fields rejected, message never echoed in errors)
 - [x] Concurrent turns for the same user: second fails fast with 409 `turn_in_progress`, first is unharmed, other users are not blocked (tested; the test fails if the lock is removed)
 - Known limit: the limiter is per instance and resets on restart (Phase 8 pins Cloud Run to one instance)
+- Known limit: a request with an invalid body (422) still counts against the rate limit and briefly takes a pooled connection and the user's turn lock (FastAPI resolves dependencies first); accepted and documented in docs/chat-api.md
 
 ## Phase 7: Hardening
 - [ ] Error handling, logging, input validation, OWASP API Top 10 review
