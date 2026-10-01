@@ -115,10 +115,10 @@ per-user budgets, limit checked before the database), `integration/test_api_chat
 `integration/test_api_bookings.py::test_admin_pagination_is_validated`.
 
 **Gap / known limit.** The rate limiter is in memory, so it is **per instance** and resets on a
-restart; Phase 8 pins Cloud Run to one instance. Only `/chat` is rate limited: the booking routes are
+restart; the Render free plan runs exactly one instance (see [deploy.md](deploy.md)). Only `/chat` is rate limited: the booking routes are
 cheap and authenticated but not limited per user. `GET /bookings` returns all of the caller's own
-bookings without pagination. Cloud Run itself caps request size and concurrency; set a max
-instances and a budget alert there (Phase 8).
+bookings without pagination. The app caps request bodies at 32 KiB itself. Render's free plan cannot scale past one instance,
+so there is no runaway scaling cost to alert on.
 
 ## API5: Broken function level authorization
 
@@ -232,8 +232,8 @@ access line, **`test_authorization_header_never_appears_in_the_logs_*`**,
 were checked to fail when the header is deliberately logged); `unit/test_logging.py` (one JSON
 object per line, newline forging); `unit/test_config.py`; pgTAP `001_anon_has_no_privileges.sql`.
 
-**Gap / known limit.** No HSTS header: TLS is terminated by Cloud Run in front of the app and the
-header is better set there. No Content-Security-Policy (the API serves JSON, and the Swagger UI
+**Gap / known limit.** No HSTS header yet: TLS is terminated by Render in front of the app. Phase 8 adds it
+once HTTPS is confirmed on the live URL. No Content-Security-Policy (the API serves JSON, and the Swagger UI
 page loads assets from a CDN, so a strict policy would break `/docs`).
 
 ## API9: Improper inventory management
@@ -283,6 +283,6 @@ validation), but it can still produce a silly reply. Confirmation words are Engl
 - **Orphan calendar events.** If the database commit fails after Google accepted a create, an
   orphan event remains. It carries the booking id in its private properties. A reconciliation script
   was considered and **deliberately not built** (rare, and it would add live Google side effects).
-- The per-instance chat limiter and Cloud Run `--max-instances=1` (Phase 8).
+- The per-instance chat limiter and the single-instance Render free plan (see deploy.md).
 - Supabase's own default privileges for `supabase_admin` are not ours to change; pgTAP `001`
   fails CI if a table is ever exposed that way.
