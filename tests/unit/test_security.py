@@ -163,3 +163,42 @@ def test_auth_errors_use_generic_messages_and_status_codes() -> None:
     assert (unauthorized.status_code, unauthorized.code) == (401, "unauthorized")
     assert unauthorized.headers == {"WWW-Authenticate": "Bearer"}
     assert (unavailable.status_code, unavailable.code) == (503, "auth_unavailable")
+
+
+def test_anonymous_sign_in_token_is_rejected(
+    verifier: TokenVerifier, private_key: ec.EllipticCurvePrivateKey
+) -> None:
+    # Supabase anonymous sign-ins mint a valid, correctly signed token with is_anonymous=true.
+    # They are not real customers, so they must not reach any endpoint.
+    with pytest.raises(UnauthorizedError):
+        verifier.verify(make_token(private_key, is_anonymous=True))
+
+
+@pytest.mark.parametrize("value", [False, None])
+def test_explicitly_non_anonymous_token_is_accepted(
+    verifier: TokenVerifier, private_key: ec.EllipticCurvePrivateKey, value: object
+) -> None:
+    user = verifier.verify(make_token(private_key, is_anonymous=value))
+
+    assert user == AuthUser(id=UUID(USER_ID))
+
+
+@pytest.mark.parametrize("value", ["true", 1, "yes", [True]])
+def test_any_truthy_or_odd_is_anonymous_value_is_rejected(
+    verifier: TokenVerifier, private_key: ec.EllipticCurvePrivateKey, value: object
+) -> None:
+    # Fail closed on anything that is not a clear "not anonymous".
+    with pytest.raises(UnauthorizedError):
+        verifier.verify(make_token(private_key, is_anonymous=value))
+
+
+def test_anonymous_rejection_is_logged_but_the_error_is_generic(
+    verifier: TokenVerifier,
+    private_key: ec.EllipticCurvePrivateKey,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level("INFO"), pytest.raises(UnauthorizedError) as info:
+        verifier.verify(make_token(private_key, is_anonymous=True))
+
+    assert "anonymous" not in info.value.message.lower()
+    assert any("anonymous" in r.getMessage().lower() for r in caplog.records)
