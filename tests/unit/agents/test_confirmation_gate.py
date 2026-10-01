@@ -315,3 +315,27 @@ def test_a_calendar_failure_propagates_so_the_request_rolls_back() -> None:
     h.calendar.failing = set()
     h.say("yes")  # the customer can simply confirm again
     assert len(confirmed(h)) == 1
+
+
+@pytest.mark.parametrize("broken", [{}, {"proposed_at": "not a date"}, {"proposed_at": None}])
+def test_a_stored_proposal_without_a_valid_timestamp_is_not_executable(broken: dict) -> None:  # type: ignore[type-arg]
+    h = AgentHarness(OTHER)
+    h.sessions.save(
+        ALICE,
+        {
+            "draft": {},
+            "pending": {
+                "action": "book",
+                "service_id": str(h.haircut.id),
+                "booking_id": None,
+                "start_at": monday_local(10).isoformat(),
+                "user_id": str(ALICE),
+                "summary": "book a Haircut",
+                **broken,
+            },
+        },
+    )
+
+    h.say("yes")
+
+    assert h.written() == {}

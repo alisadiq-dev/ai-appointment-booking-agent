@@ -15,6 +15,7 @@ import pytest
 from app.agents.gemini import build_language_model
 from app.agents.model import BookingChoice, Interpretation, ModelContext
 from app.core.config import Settings
+from tests.db_requirements import check_env
 
 pytestmark = [pytest.mark.live_gemini, pytest.mark.requires_gemini]
 
@@ -28,7 +29,7 @@ CONTEXT = ModelContext(
 
 @pytest.fixture(scope="module")
 def model():  # type: ignore[no-untyped-def]
-    assert os.environ.get("GEMINI_API_KEY")
+    check_env("requires_gemini", os.environ)  # module fixtures run before the autouse check
     return build_language_model(Settings(_env_file=None))
 
 

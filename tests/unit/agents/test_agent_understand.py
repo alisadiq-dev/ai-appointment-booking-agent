@@ -178,3 +178,11 @@ def test_a_booking_number_outside_my_list_is_ignored() -> None:
     assert "1." in reply
     assert "2." in reply  # still asking which one
     assert all(b.status == "confirmed" for b in h.written().values())
+
+
+def test_asking_about_a_closed_day_says_there_are_no_free_times() -> None:
+    h = AgentHarness(
+        Interpretation(action="availability", service_name="Haircut", date="2026-10-04")
+    )
+
+    assert "no free times" in h.say("anything free on sunday?").lower()
