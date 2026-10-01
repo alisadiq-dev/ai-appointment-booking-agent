@@ -12,6 +12,7 @@ import pytest
 REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "requires_db": ("DATABASE_URL",),
     "requires_supabase_auth": ("SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY"),
+    "requires_gemini": ("GEMINI_API_KEY",),
     "requires_google": ("GOOGLE_CALENDAR_ID", "GOOGLE_SERVICE_ACCOUNT_JSON"),
 }
 
