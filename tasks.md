@@ -41,7 +41,7 @@ Decisions (approved): `BUSINESS_TIMEZONE` default Asia/Karachi (DST proven with 
 Approved so far: service account (calendar shared to it), no OAuth user flow; env vars `CALENDAR_ENABLED`, `GOOGLE_CALENDAR_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON` (kept outside the repo); live test credentials provided.
 - [x] `CalendarPort` interface, `GoogleCalendar` adapter (service account, `calendar.events` scope, timeout, backoff, deterministic event ids, fail closed), mocked-HTTP tests, secret-safe settings
 - [x] Live test written (`pytest -m live_google`), sweeps its own events
-- [ ] **Live test blocked:** Google returns 404 and the service account sees 0 calendars, so the calendar is not shared with it (see docs/google-calendar.md). Re-run after sharing
+- [x] Live test passes against a real calendar (4/4, 0 events left behind). It found two real-API behaviours the mocks had wrong (deleted events are `cancelled` tombstones: patch answers 200, re-create answers 409); the adapter now handles both
 - [ ] Wire into `BookingService` (create/reschedule/cancel inside the request transaction, compensating delete, `google_event_id` saved, availability and create treat manual events as busy). Waiting on decisions: strict consistency, fail-closed availability, event content, all-day events
 - [ ] `FakeCalendar` for service tests, no-op calendar for local dev (`CALENDAR_ENABLED=false`)
 

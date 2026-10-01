@@ -20,6 +20,12 @@ There is no OAuth user flow and no domain-wide delegation.
   (`503 calendar_unavailable`) and logs the status, never credentials or identifiers.
 - **Deleting** an event that is already gone (`404`/`410`) is success. **Updating** one that is
   gone raises `CalendarEventNotFoundError`.
+- **Deleted events are tombstones** (verified against the real API): they stay readable with
+  `status: cancelled`; patching one answers `200` and does *not* revive it, so the adapter
+  checks the returned status; and creating an event with a deleted event's id answers `409`
+  forever. After a `409` on create the adapter reads the event: a live one means "already
+  created" (a retried create), a cancelled one fails closed (`503`), because the booking cannot
+  have an event under that id. A new booking always has a new id, so a fresh attempt works.
 - **Busy time:** `list_busy` returns events added by hand (manual blocks, holidays). It skips
   events this app created (marked `source=ai-appointment-agent`, already covered by the
   bookings table), cancelled events and events marked *free*. An all-day event blocks the whole
