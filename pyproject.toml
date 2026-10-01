@@ -5,6 +5,9 @@ description = "AI receptionist API that books appointments via Google Calendar a
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.142.2",
+    "google-api-python-client>=2.201.0",
+    "google-auth>=2.59.1",
+    "google-auth-httplib2>=0.4.3",
     "psycopg[binary,pool]>=3.3.6",
     "pydantic-settings>=2.15.0",
     "pyjwt[crypto]>=2.15.1",
