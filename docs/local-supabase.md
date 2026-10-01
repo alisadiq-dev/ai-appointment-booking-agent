@@ -27,7 +27,9 @@ supabase test db        # pgTAP: overlap constraint, RLS, privileges
 curl http://127.0.0.1:54321/auth/v1/.well-known/jwks.json   # public key only
 ```
 
-Point the API at it (see `.env.example`): `SUPABASE_URL=http://127.0.0.1:54321`.
+Point the API at it. `.env.example` has every value commented out (the production host would
+otherwise apply them); the `sed` one-liner in its header writes a local `.env` with
+`SUPABASE_URL=http://127.0.0.1:54321` and the other local defaults.
 
 ## Verify a real token (opt-in tests)
 

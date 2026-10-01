@@ -73,6 +73,19 @@ Port 8080 is set in the dashboard; the Dockerfile also defaults to 8080.
 
 The set is 10 variables in total (6 plus 4 secrets).
 
+**SnapDeploy re-applies `.env.example` over the dashboard values after every deploy** (confirmed on
+2026-10-01: `APP_ENV` went back to `development` and the startup log warned `CALENDAR_ENABLED is
+false`). That is why `.env.example` now has **no active assignments**: every value is commented
+out (`# APP_ENV=development`), so a deploy has nothing to apply, and the file is documentation only.
+Local development turns the defaults on with the `sed` one-liner in the file's header. Never put
+production or real values in `.env.example`.
+
+**A deploy must still be followed by a check of `APP_ENV` and `CALENDAR_ENABLED`** in the dashboard
+(`APP_ENV=production`, `CALENDAR_ENABLED=true`), and of the other variables in the list above. That
+the commented lines are really ignored by SnapDeploy is **not verified yet**: it will only be known
+after the next deploy. If a value is overridden again, a fallback is to delete the active-looking
+placeholder lines from `.env.example` altogether, or to move the file out of the repo root.
+
 ## First deploy, in order
 
 1. **Migrations**: Actions tab, **Production migrations**, Run workflow with `dry_run` ticked,
