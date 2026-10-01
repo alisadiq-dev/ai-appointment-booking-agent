@@ -41,6 +41,16 @@ from app.schemas.bookings import Booking
 from app.schemas.services import Service
 from app.schemas.time_range import TimeRange
 from app.services.booking_service import BookingService
+from app.services.errors import (
+    BookingInPastError,
+    BookingNotActiveError,
+    BookingNotFoundError,
+    ForbiddenError,
+    InvalidSlotTimeError,
+    OutsideBusinessHoursError,
+    ServiceNotFoundError,
+    SlotUnavailableError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +63,20 @@ FALLBACK_REPLY = (
 HELP_REPLY = (
     "I can help you book an appointment, reschedule or cancel one, or check which times are free. "
     "What would you like to do?"
+)
+
+# Rule violations that happen before anything is written. CalendarUnavailableError and
+# CalendarEventMissingError are deliberately absent: they can be raised after the database write,
+# so they must propagate and roll the request's transaction back.
+_FRIENDLY_ERRORS = (
+    SlotUnavailableError,
+    BookingNotFoundError,
+    BookingNotActiveError,
+    BookingInPastError,
+    OutsideBusinessHoursError,
+    InvalidSlotTimeError,
+    ServiceNotFoundError,
+    ForbiddenError,
 )
 
 _TIME_FORMAT = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
@@ -115,11 +139,28 @@ class BookingAgent:
         graph.add_node("understand", self._understand)
         graph.add_node("plan", self._plan)
         graph.add_node("propose", self._propose)
-        graph.add_conditional_edges(START, self._entry, {"understand": "understand"})
+        graph.add_node("confirm_gate", self._confirm_gate)
+        graph.add_node("execute", self._execute)
+        graph.add_conditional_edges(
+            START, self._entry, {"understand": "understand", "confirm_gate": "confirm_gate"}
+        )
         return graph.compile()
 
-    def _entry(self, state: AgentState) -> Literal["understand"]:
+    def _entry(self, state: AgentState) -> Literal["understand", "confirm_gate"]:
+        pending = state.get("pending")
+        if pending and self._pending_is_live(pending, state["user_id"]):
+            return "confirm_gate"
         return "understand"
+
+    def _pending_is_live(self, pending: dict[str, Any], user_id: str) -> bool:
+        if pending.get("user_id") != user_id:
+            logger.warning("Ignoring a stored proposal that belongs to a different user")
+            return False
+        try:
+            proposed_at = datetime.fromisoformat(pending["proposed_at"])
+        except (KeyError, TypeError, ValueError):
+            return False
+        return self._now() - proposed_at <= PROPOSAL_TTL
 
     # ------------------------------------------------------------------ helpers
 
@@ -183,10 +224,12 @@ class BookingAgent:
         try:
             interpretation = self._model.interpret(message, context)
         except ModelUnavailableError:
-            return Command(update={"reply": FALLBACK_REPLY, "draft": draft}, goto=END)
+            return Command(
+                update={"reply": FALLBACK_REPLY, "draft": draft, "pending": None}, goto=END
+            )
 
         draft = self._merge(draft, interpretation, services, mine)
-        return Command(update={"draft": draft}, goto="plan")
+        return Command(update={"draft": draft, "pending": None}, goto="plan")
 
     def _merge(
         self,
@@ -325,3 +368,86 @@ class BookingAgent:
             (b for b in self._my_bookings(user_id) if str(b.id) == draft["booking_id"]), None
         )
         return own is not None and own.start_at < end and start < own.end_at
+
+    def _confirm_gate(self, state: AgentState) -> Command[Literal["execute", "__end__"]]:
+        """Reads the customer's answer to a live proposal. Only an explicit yes goes on."""
+        pending = state["pending"] or {}
+        draft = dict(state.get("draft") or {})
+        answer = classify_reply(state["message"])
+        if answer is Reply.YES:
+            return Command(update={"confirmed": True}, goto="execute")
+        if answer is Reply.NO:
+            if pending.get("action") == "cancel":
+                return Command(
+                    update={
+                        "reply": "Okay, I haven't cancelled anything.",
+                        "pending": None,
+                        "draft": {},
+                    },
+                    goto=END,
+                )
+            draft.pop("time", None)
+            return Command(
+                update={
+                    "reply": "No problem, I haven't booked anything. "
+                    "What other time would you like?",
+                    "pending": None,
+                    "draft": draft,
+                },
+                goto=END,
+            )
+        return Command(
+            update={
+                "reply": "I'm waiting for your answer: shall I "
+                f"{pending.get('summary', 'proceed')}? Reply yes to confirm or no to change it.",
+            },
+            goto=END,
+        )
+
+    def _execute(self, state: AgentState) -> Command[Literal["__end__"]]:
+        """The only place that writes. Runs what was proposed and confirmed, nothing else."""
+        pending = state.get("pending") or {}
+        draft = dict(state.get("draft") or {})
+        if not state.get("confirmed") or pending.get("user_id") != state.get("user_id"):
+            return Command(
+                update={
+                    "reply": "I need your explicit confirmation first. Nothing has been changed.",
+                    "pending": None,
+                },
+                goto=END,
+            )
+        user_id = UUID(state["user_id"])  # from the token, never from the model
+        action = pending["action"]
+        try:
+            if action == "book":
+                start = datetime.fromisoformat(pending["start_at"])
+                self._bookings.create_booking(user_id, UUID(pending["service_id"]), start)
+                reply, outcome = (
+                    f"Done! Your appointment is booked: {pending['summary']}.",
+                    "booked",
+                )
+            elif action == "reschedule":
+                start = datetime.fromisoformat(pending["start_at"])
+                self._bookings.reschedule_booking(user_id, UUID(pending["booking_id"]), start)
+                reply, outcome = "Done! Your booking has been moved.", "rescheduled"
+            else:
+                self._bookings.cancel_booking(user_id, UUID(pending["booking_id"]))
+                reply, outcome = "Done! Your booking has been cancelled.", "cancelled"
+        except _FRIENDLY_ERRORS as exc:
+            # Nothing was written. (Calendar errors are not in this list: they propagate.)
+            if isinstance(exc, SlotUnavailableError):
+                draft.pop("time", None)
+            else:
+                draft = {}
+            return Command(
+                update={
+                    "reply": f"{exc.message} Nothing has been changed. What would you like to do?",
+                    "pending": None,
+                    "draft": draft,
+                },
+                goto=END,
+            )
+        return Command(
+            update={"reply": reply, "outcome": outcome, "pending": None, "draft": {}},
+            goto=END,
+        )
