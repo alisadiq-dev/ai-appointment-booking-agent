@@ -38,12 +38,14 @@ Decisions (approved): `BUSINESS_TIMEZONE` default Asia/Karachi (DST proven with 
 - Follow-up (Phase 7): 404/405 from unknown routes still use FastAPI's default body, not the standard error format
 
 ## Phase 4: Google Calendar integration
-Approved so far: service account (calendar shared to it), no OAuth user flow; env vars `CALENDAR_ENABLED`, `GOOGLE_CALENDAR_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON` (kept outside the repo); live test credentials provided.
-- [x] `CalendarPort` interface, `GoogleCalendar` adapter (service account, `calendar.events` scope, timeout, backoff, deterministic event ids, fail closed), mocked-HTTP tests, secret-safe settings
-- [x] Live test written (`pytest -m live_google`), sweeps its own events
-- [x] Live test passes against a real calendar (4/4, 0 events left behind). It found two real-API behaviours the mocks had wrong (deleted events are `cancelled` tombstones: patch answers 200, re-create answers 409); the adapter now handles both
-- [ ] Wire into `BookingService` (create/reschedule/cancel inside the request transaction, compensating delete, `google_event_id` saved, availability and create treat manual events as busy). Waiting on decisions: strict consistency, fail-closed availability, event content, all-day events
-- [ ] `FakeCalendar` for service tests, no-op calendar for local dev (`CALENDAR_ENABLED=false`)
+Decisions (approved): service account (calendar shared to it), no OAuth user flow. Strict consistency (a Google failure makes create, reschedule or cancel fail with 503 and roll back). Availability fails closed with 503. Event title `"<service> - <customer name>"`, booking id in description and private extended properties, no email or phone. All-day events block the whole day, read in `BUSINESS_TIMEZONE`.
+- [x] `CalendarPort`, `GoogleCalendar` adapter (service account, `calendar.events` scope, timeout, backoff, deterministic event ids, fail closed), secret-safe settings
+- [x] Live test against a real calendar: 4/4 pass, nothing left behind. It found two real-API behaviours (deleted events are `cancelled` tombstones: patch answers 200, re-create answers 409); the adapter handles both and the docs record them
+- [x] Wired into `BookingService`: create, reschedule and cancel sync the event inside the request transaction (DB first, Google last); manual events block bookings and availability; `google_event_id` is the booking id hex, stored at insert
+- [x] Tests: `singleEvents=true` (recurring expanded), `nextPageToken` paging, all-day dates read in the business timezone (Karachi, Los Angeles, a London DST day), Google failures roll back over HTTP against real Postgres
+- [x] `FakeCalendar` for tests, `NullCalendar` when `CALENDAR_ENABLED=false`; startup builds the Google client (a bad key stops startup) or warns that sync is off
+- Known limit: a failed database commit after Google accepted a create leaves an orphan event (carries the booking id in private properties)
+- Follow-up (Phase 7): a reconciliation script for orphan events, if wanted
 
 ## Phase 5: LangGraph agent
 - [ ] Nodes one by one with tests; confirmation gate tested explicitly
