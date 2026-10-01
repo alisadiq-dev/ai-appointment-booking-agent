@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
@@ -6,6 +7,7 @@ from zoneinfo import ZoneInfo
 from app.repositories.errors import SlotTakenError
 from app.schemas.bookings import Booking
 from app.schemas.business_hours import BusinessHour
+from app.schemas.calendar import CalendarEvent
 from app.schemas.services import Service
 from app.schemas.time_range import TimeRange
 from app.services.availability import (
@@ -18,6 +20,8 @@ from app.services.errors import (
     BookingInPastError,
     BookingNotActiveError,
     BookingNotFoundError,
+    CalendarEventMissingError,
+    CalendarEventNotFoundError,
     ForbiddenError,
     InvalidSlotTimeError,
     OutsideBusinessHoursError,
@@ -27,6 +31,7 @@ from app.services.errors import (
 from app.services.ports import (
     BookingRepositoryPort,
     BusinessHoursRepositoryPort,
+    CalendarPort,
     ProfileRepositoryPort,
     ServiceRepositoryPort,
 )
@@ -42,6 +47,12 @@ class BookingService:
     Overlap prevention is the database's job (exclusion constraint): two simultaneous requests
     for one slot cannot both succeed, and the loser surfaces as SlotUnavailableError. This
     service only validates what the database cannot (hours, grid, past) and maps errors.
+
+    Google Calendar sync is strict. Each write does its database change first and its calendar
+    call last, inside the request. If Google fails, CalendarUnavailableError (503) propagates and
+    the caller's request transaction rolls the database change back (the app's per-request
+    connection does this; this class never commits). Events created by hand in the calendar
+    block availability and bookings, and so does an unreachable calendar (fail closed).
     """
 
     def __init__(
@@ -51,6 +62,7 @@ class BookingService:
         services: ServiceRepositoryPort,
         business_hours: BusinessHoursRepositoryPort,
         profiles: ProfileRepositoryPort,
+        calendar: CalendarPort,
         zone: ZoneInfo,
         slot_interval: timedelta,
         clock: Callable[[], datetime] = _utc_now,
@@ -59,6 +71,7 @@ class BookingService:
         self._services = services
         self._business_hours = business_hours
         self._profiles = profiles
+        self._calendar = calendar
         self._zone = zone
         self._interval = slot_interval
         self._clock = clock
@@ -84,7 +97,10 @@ class BookingService:
             duration=duration,
             hours=hours,
             zone=self._zone,
-            busy=self._bookings.list_busy(window.start, window.end),
+            busy=[
+                *self._bookings.list_busy(window.start, window.end),
+                *self._calendar.list_busy(window.start, window.end),  # 503 if Google is down
+            ],
             now=self._clock(),
             interval=self._interval,
         )
@@ -103,21 +119,49 @@ class BookingService:
     def create_booking(self, user_id: UUID, service_id: UUID, start_at: datetime) -> Booking:
         service = self._get_service(service_id)
         start, end = self._slot(start_at, service)
+        self._ensure_calendar_is_free(start, end)
+        # The booking id doubles as the Google event id, so the row can carry it from the start.
+        booking_id = uuid.uuid4()
         try:
-            return self._bookings.create(user_id, service.id, start, end)
+            booking = self._bookings.create(
+                user_id,
+                service.id,
+                start,
+                end,
+                booking_id=booking_id,
+                google_event_id=booking_id.hex,
+            )
         except SlotTakenError as exc:
             raise SlotUnavailableError from exc
+        customer = self._profiles.get_full_name(user_id) or "Customer"
+        self._calendar.create_event(
+            CalendarEvent(
+                booking_id=booking_id,
+                summary=f"{service.name} - {customer}",
+                description=f"Booking {booking_id}",
+                start=start,
+                end=end,
+            )
+        )
+        return booking
 
     def reschedule_booking(self, user_id: UUID, booking_id: UUID, start_at: datetime) -> Booking:
         booking = self._get_active_future_booking(user_id, booking_id)
         service = self._get_service(booking.service_id)
         start, end = self._slot(start_at, service)
+        if booking.google_event_id is None:
+            raise CalendarEventMissingError
+        self._ensure_calendar_is_free(start, end)
         try:
             updated = self._bookings.update_times(booking.id, user_id, start, end)
         except SlotTakenError as exc:
             raise SlotUnavailableError from exc
         if updated is None:  # cancelled by a concurrent request since we read it
             raise BookingNotActiveError
+        try:
+            self._calendar.update_event(booking.google_event_id, start, end)
+        except CalendarEventNotFoundError as exc:  # someone deleted it by hand: roll back
+            raise CalendarEventMissingError from exc
         return updated
 
     def cancel_booking(self, user_id: UUID, booking_id: UUID) -> Booking:
@@ -125,9 +169,16 @@ class BookingService:
         cancelled = self._bookings.cancel(booking.id, user_id)
         if cancelled is None:  # cancelled by a concurrent request since we read it
             raise BookingNotActiveError
+        if booking.google_event_id is not None:
+            self._calendar.delete_event(booking.google_event_id)  # already gone is fine
         return cancelled
 
     # -------------------------------------------------------------------- helpers
+
+    def _ensure_calendar_is_free(self, start: datetime, end: datetime) -> None:
+        """Reject a slot that overlaps an event someone added to the calendar by hand."""
+        if any(r.overlaps(start, end) for r in self._calendar.list_busy(start, end)):
+            raise SlotUnavailableError
 
     def _get_service(self, service_id: UUID) -> Service:
         service = self._services.get(service_id)

@@ -15,6 +15,7 @@ from app.main import create_app
 from app.schemas.business_hours import BusinessHour
 from app.services.booking_service import BookingService
 from tests.fakes import (
+    FakeCalendar,
     InMemoryBookingRepository,
     InMemoryBusinessHoursRepository,
     InMemoryProfileRepository,
@@ -52,6 +53,7 @@ def client() -> TestClient:
         services=InMemoryServiceRepository([HAIRCUT, COMBO]),
         business_hours=InMemoryBusinessHoursRepository(_hours()),
         profiles=InMemoryProfileRepository({ALICE: "customer", BOB: "customer", ADMIN: "admin"}),
+        calendar=FakeCalendar(),
         zone=ZoneInfo("Asia/Karachi"),
         slot_interval=timedelta(minutes=15),
         clock=lambda: NOW,

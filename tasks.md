@@ -38,7 +38,14 @@ Decisions (approved): `BUSINESS_TIMEZONE` default Asia/Karachi (DST proven with 
 - Follow-up (Phase 7): 404/405 from unknown routes still use FastAPI's default body, not the standard error format
 
 ## Phase 4: Google Calendar integration
-- [ ] Interface plus implementation: sync create, update, delete. Mocked in tests
+Decisions (approved): service account (calendar shared to it), no OAuth user flow. Strict consistency (a Google failure makes create, reschedule or cancel fail with 503 and roll back). Availability fails closed with 503. Event title `"<service> - <customer name>"`, booking id in description and private extended properties, no email or phone. All-day events block the whole day, read in `BUSINESS_TIMEZONE`.
+- [x] `CalendarPort`, `GoogleCalendar` adapter (service account, `calendar.events` scope, timeout, backoff, deterministic event ids, fail closed), secret-safe settings
+- [x] Live test against a real calendar: 4/4 pass, nothing left behind. It found two real-API behaviours (deleted events are `cancelled` tombstones: patch answers 200, re-create answers 409); the adapter handles both and the docs record them
+- [x] Wired into `BookingService`: create, reschedule and cancel sync the event inside the request transaction (DB first, Google last); manual events block bookings and availability; `google_event_id` is the booking id hex, stored at insert
+- [x] Tests: `singleEvents=true` (recurring expanded), `nextPageToken` paging, all-day dates read in the business timezone (Karachi, Los Angeles, a London DST day), Google failures roll back over HTTP against real Postgres
+- [x] `FakeCalendar` for tests, `NullCalendar` when `CALENDAR_ENABLED=false`; startup builds the Google client (a bad key stops startup) or warns that sync is off
+- Known limit: a failed database commit after Google accepted a create leaves an orphan event (carries the booking id in private properties)
+- Follow-up (Phase 7): a reconciliation script for orphan events, if wanted
 
 ## Phase 5: LangGraph agent
 - [ ] Nodes one by one with tests; confirmation gate tested explicitly
@@ -53,6 +60,7 @@ Decisions (approved): `BUSINESS_TIMEZONE` default Asia/Karachi (DST proven with 
 ## Phase 8: CI/CD
 - [ ] GitHub Actions: lint and tests
 - [ ] **CI must also run `supabase start` and `supabase test db`, not only pytest** (the pgTAP suite guards the overlap constraint, RLS and privileges)
+- [ ] CI runs the live Google tests only if a test calendar and key are stored as CI secrets (otherwise they are skipped without `REQUIRE_DB`); `CALENDAR_ENABLED` must be `true` in the deployed service
 - [ ] **CI sets `REQUIRE_DB=1`** plus `DATABASE_URL`, `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`, so missing configuration fails the DB-backed and real-GoTrue tests instead of skipping them (see docs/local-supabase.md)
 - [ ] CI must create `supabase/signing_keys.json` before `supabase start` (`echo '[]' > ...` then `supabase gen signing-key --algorithm ES256 --append`; see docs/local-supabase.md) and run `pytest -m local_supabase` with `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY`
 - [ ] Verify JWKS verification against a hosted Supabase project (asymmetric signing keys enabled) before relying on it in production

@@ -1,14 +1,18 @@
+import json
 from functools import lru_cache
+from typing import Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Application settings, read from environment variables (and a local .env in dev)."""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # hide_input_in_errors: a failed validation must never echo setting values (they include
+    # credentials) into tracebacks or logs.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
     app_env: str = "development"
     log_level: str = "INFO"
@@ -25,6 +29,38 @@ class Settings(BaseSettings):
 
     business_timezone: str = "Asia/Karachi"
     slot_interval_minutes: int = Field(default=15, gt=0, le=1440)
+
+    # Google Calendar (service account; the calendar is shared with the service account's email).
+    # Secrets are SecretStr so they never appear in reprs, logs or validation errors.
+    calendar_enabled: bool = False
+    google_calendar_id: SecretStr | None = None
+    google_service_account_json: SecretStr | None = None
+    calendar_timeout_seconds: float = Field(default=10, gt=0)
+    calendar_num_retries: int = Field(default=3, ge=0, le=8)
+
+    @model_validator(mode="after")
+    def _calendar_config_is_complete(self) -> Self:
+        if not self.calendar_enabled:
+            return self
+        calendar_id = self.google_calendar_id
+        if calendar_id is None or not calendar_id.get_secret_value().strip():
+            raise ValueError("CALENDAR_ENABLED is true but GOOGLE_CALENDAR_ID is not set")
+        key = self.google_service_account_json
+        if key is None or not key.get_secret_value().strip():
+            raise ValueError("CALENDAR_ENABLED is true but GOOGLE_SERVICE_ACCOUNT_JSON is not set")
+        try:
+            data = json.loads(key.get_secret_value())
+        except ValueError:
+            raise ValueError("GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON") from None
+        if (
+            not isinstance(data, dict)
+            or not data.get("client_email")
+            or not data.get("private_key")
+        ):
+            raise ValueError(
+                "GOOGLE_SERVICE_ACCOUNT_JSON must contain client_email and private_key"
+            )
+        return self
 
     @field_validator("business_timezone")
     @classmethod

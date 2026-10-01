@@ -25,6 +25,7 @@ from app.services.errors import (
     ForbiddenError,
     SlotUnavailableError,
 )
+from tests.fakes import FakeCalendar
 from tests.integration.conftest import DATABASE_URL, Conn, make_user, requires_db
 
 pytestmark = [pytest.mark.local_supabase, requires_db]
@@ -43,6 +44,7 @@ def build_service(conn: Conn) -> BookingService:
         services=ServiceRepository(conn),
         business_hours=BusinessHoursRepository(conn),
         profiles=ProfileRepository(conn),
+        calendar=FakeCalendar(),
         zone=ZoneInfo("Asia/Karachi"),
         slot_interval=timedelta(minutes=15),
         clock=lambda: NOW,
@@ -113,14 +115,12 @@ def test_reschedule_keeps_the_same_row_and_google_event_id(conn: Conn) -> None:
     svc = build_service(conn)
     user = make_user(conn)
     booking = svc.create_booking(user, seeded_service_id(conn), at(5))
-    conn.execute(
-        "update public.bookings set google_event_id = 'evt-123' where id = %s", (booking.id,)
-    )
+    assert booking.google_event_id == booking.id.hex  # assigned at creation
 
     moved = svc.reschedule_booking(user, booking.id, at(9))
 
     assert moved.id == booking.id
-    assert moved.google_event_id == "evt-123"
+    assert moved.google_event_id == booking.google_event_id
 
 
 def test_reschedule_a_cancelled_booking_is_not_active(conn: Conn) -> None:

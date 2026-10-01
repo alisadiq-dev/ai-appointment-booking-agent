@@ -15,3 +15,10 @@ supabase/.temp/
 
 # Local Supabase JWT signing key (PRIVATE). Generate with: supabase gen signing-key --algorithm ES256
 supabase/signing_keys.json
+
+# Credentials must never be committed (keep them outside the repo, e.g. ~/.secrets/)
+.secrets/
+*.pem
+service-account*.json
+*-service-account*.json
+google-credentials*.json

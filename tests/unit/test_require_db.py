@@ -93,3 +93,13 @@ def test_nested_session_runs_the_test_when_configured(
     result = _nested(pytester, monkeypatch, REQUIRE_DB="1", DATABASE_URL="postgresql://x")
 
     result.assert_outcomes(passed=1)
+
+
+def test_google_tests_need_both_calendar_variables() -> None:
+    with pytest.raises(
+        pytest.skip.Exception, match="GOOGLE_CALENDAR_ID, GOOGLE_SERVICE_ACCOUNT_JSON"
+    ):
+        check_env("requires_google", {})
+    with pytest.raises(pytest.fail.Exception, match="GOOGLE_SERVICE_ACCOUNT_JSON"):
+        check_env("requires_google", {"REQUIRE_DB": "1", "GOOGLE_CALENDAR_ID": "x"})
+    check_env("requires_google", {"GOOGLE_CALENDAR_ID": "x", "GOOGLE_SERVICE_ACCOUNT_JSON": "{}"})

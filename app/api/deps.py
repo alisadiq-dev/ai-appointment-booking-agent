@@ -13,6 +13,8 @@ from psycopg_pool import PoolTimeout
 from app.core.config import Settings, get_settings
 from app.core.errors import DatabaseUnavailableError
 from app.core.security import AuthUnavailableError, AuthUser, TokenVerifier, UnauthorizedError
+from app.integrations.google_calendar import GoogleCalendar
+from app.integrations.null_calendar import NullCalendar
 from app.integrations.supabase_jwks import JwksKeyProvider
 from app.repositories.bookings import BookingRepository
 from app.repositories.business_hours import BusinessHoursRepository
@@ -20,6 +22,7 @@ from app.repositories.profiles import ProfileRepository
 from app.repositories.services import ServiceRepository
 from app.repositories.types import Conn
 from app.services.booking_service import BookingService
+from app.services.ports import CalendarPort
 
 logger = logging.getLogger(__name__)
 
@@ -88,14 +91,26 @@ def get_db_connection(request: Request) -> Iterator[Conn]:
 DbConn = Annotated[Conn, Depends(get_db_connection, scope="function")]
 
 
+@lru_cache
+def get_calendar() -> CalendarPort:
+    """One shared calendar client (it holds the credentials and refreshes tokens)."""
+    settings = get_settings()
+    if not settings.calendar_enabled:
+        return NullCalendar()
+    return GoogleCalendar.from_settings(settings)
+
+
 def get_booking_service(
-    conn: DbConn, settings: Annotated[Settings, Depends(get_settings)]
+    conn: DbConn,
+    settings: Annotated[Settings, Depends(get_settings)],
+    calendar: Annotated[CalendarPort, Depends(get_calendar)],
 ) -> BookingService:
     return BookingService(
         bookings=BookingRepository(conn),
         services=ServiceRepository(conn),
         business_hours=BusinessHoursRepository(conn),
         profiles=ProfileRepository(conn),
+        calendar=calendar,
         zone=settings.business_zone,
         slot_interval=timedelta(minutes=settings.slot_interval_minutes),
     )
