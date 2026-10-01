@@ -139,9 +139,11 @@ supabase test db                     # pgTAP: overlap constraint, RLS, privilege
 uv run ruff check . && uv run ruff format --check .
 ```
 
-Without a database, the last full local run was 560 passed and 75 skipped (the skipped ones need
-Postgres or real Google or Gemini keys). CI runs lint, pgTAP, pytest with `REQUIRE_DB=1`,
-`pip-audit`, and a Docker build with a `/health` smoke test and a non-root check. Real Google
+[![CI](https://github.com/alisadiq-dev/ai-appointment-booking-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/alisadiq-dev/ai-appointment-booking-agent/actions/workflows/ci.yml)
+
+CI runs the full suite against a real Postgres: 628 passed, 0 skipped, plus 42 pgTAP assertions.
+It runs lint, pgTAP, pytest with `REQUIRE_DB=1`, `pip-audit`, and a Docker build with a `/health`
+smoke test and a non-root check. Without a database, `uv run pytest` skips the database-backed tests. Real Google
 Calendar and Gemini tests live in a manual workflow, `live.yml`, so they never gate a deploy
 (run 36876498011 passed).
 
