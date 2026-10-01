@@ -68,6 +68,13 @@ its variants); `integration/test_auth_dependency.py` (HTTP level, JWKS down, slo
 `integration/test_api_bookings.py::test_every_endpoint_requires_authentication`;
 `integration/test_auth_local_supabase.py` (opt-in, a real GoTrue token).
 
+**Production settings (hosted project, checked 2026-10-01).** Anonymous sign-ins off, **new-user
+sign-up off** (the 1 to 2 demo users are created by hand in the dashboard, so nobody can mass
+register accounts to get around the per-user limits in API4 and API6), "Confirm email" on, Auth
+rate limits at the defaults. Demo tokens come from a password-grant script that prints only the
+access token (see [deploy.md](deploy.md)); its credentials live in a local env file outside the
+repo, never in git, Render or GitHub.
+
 **Gap / known limit.** There is no brute-force protection on login: login is Supabase's, not ours.
 Configure Supabase Auth rate limits and keep anonymous sign-ins disabled in the project. We have
 not yet verified JWKS against a hosted project (tracked in tasks.md, Phase 8).

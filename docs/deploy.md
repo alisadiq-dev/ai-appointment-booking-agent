@@ -59,8 +59,25 @@ dashboard on first creation and they never enter the repository.
    key is active. The API verifies tokens only against
    `https://<ref>.supabase.co/auth/v1/.well-known/jwks.json`; with only the legacy secret it
    would answer 503.
-3. Leave anonymous sign-ins disabled (the API rejects them anyway).
+3. *Authentication, Sign In / Providers* (checked 2026-10-01): anonymous sign-ins **off**,
+   "Allow new users to sign up" **off** (sign-ups are closed for the portfolio demo), "Confirm
+   email" **on**, Auth rate limits at their defaults. The API rejects anonymous tokens anyway.
 4. Apply the schema with the manual **Production migrations** workflow (`supabase db push`).
+5. **Only after step 4**, create the 1 to 2 demo users by hand (*Authentication, Users, Add user*,
+   with "Auto Confirm User" ticked, since sign-up and confirmation emails are not in play).
+   Order matters: the `on_auth_user_created` trigger creates each user's `profiles` row, and it
+   exists only after the migrations. A user created earlier has no profile row.
+
+## Demo token flow
+
+Sign-ups are closed, so nobody can register against production. For the demo, a small script
+(Phase 9) signs a demo user in with Supabase's password grant
+(`POST {SUPABASE_URL}/auth/v1/token?grant_type=password` with the project's publishable key) and
+prints **only the access token**, to paste into Swagger's *Authorize* button. The demo email and
+password and the publishable key are read from a local env file outside the repo (for example
+`~/.secrets/booking-agent.env`); the script never prints, logs or stores the password or the
+refresh token. Access tokens are short lived (one hour by default). The API itself still has no
+login endpoint: it only verifies tokens.
 
 ## GitHub secrets and variables
 

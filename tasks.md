@@ -92,7 +92,8 @@ Decisions (approved): deploy to Render's free web service from the existing Dock
 - [ ] **CI must build the Docker image and smoke-test `/health`, so it is verified before deploy**
 - [ ] `render.yaml` blueprint: Docker runtime, free plan, Singapore, one instance, health check `/health`, `autoDeployTrigger: checksPass`, `CALENDAR_ENABLED=true`, `DB_POOL_MAX_SIZE=5`, all secrets `sync: false`
 - [ ] Manual workflow (`workflow_dispatch`) that runs `supabase link` and `supabase db push` against the hosted project
-- [ ] Hosted Supabase project (Singapore): enable asymmetric JWT signing keys, verify JWKS verification against it before relying on it in production
+- [x] Hosted Supabase project `dhovoboznckrknphwpir` (Singapore) created: Data API off, ES256 signing key active and served at the JWKS URL, anonymous sign-ins off, sign-ups closed, confirm email on
+- [ ] Verify a real hosted user token against the JWKS (after migrations and a hand-made demo user)
 - [ ] **Render free plan runs one instance**, which satisfies the in-memory chat rate limiter; document that, and that a restart or spin-down resets the counters. Raise the instance count only after moving the limiter to a shared store such as Redis (see docs/chat-api.md)
 - [ ] Document the cold start (spin-down after 15 idle minutes, about a minute to restart) and the free-plan limits (750 instance hours a month, ephemeral filesystem)
 - [ ] Add an HSTS header (`Strict-Transport-Security`) once HTTPS is confirmed on the Render URL (set in the app's security headers; start with a short max-age)
@@ -100,3 +101,4 @@ Decisions (approved): deploy to Render's free web service from the existing Dock
 
 ## Phase 9: Portfolio polish
 - [ ] README (diagrams, setup, env vars, API examples), sample curl requests, demo script
+- [ ] Demo token script: password grant for a hand-made demo user (sign-ups are closed in production), credentials from a local secrets file, prints only the access token (see docs/deploy.md)
