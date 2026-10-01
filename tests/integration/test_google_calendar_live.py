@@ -148,8 +148,10 @@ def test_event_lifecycle_create_update_delete(live: Live) -> None:
         assert gone is None or gone["status"] == "cancelled"
 
         live.calendar.delete_event(event_id)  # deleting twice is fine
-        with pytest.raises(CalendarEventNotFoundError):
+        with pytest.raises(CalendarEventNotFoundError):  # Google answers 200 + "cancelled"
             live.calendar.update_event(event_id, at(4, 8), at(4, 8, 30))
+        with pytest.raises(CalendarUnavailableError):  # a deleted event's id can never be reused
+            live.calendar.create_event(event)
     finally:
         if event_id:
             live.calendar.delete_event(event_id)

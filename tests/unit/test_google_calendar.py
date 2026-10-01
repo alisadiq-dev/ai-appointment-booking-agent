@@ -87,11 +87,33 @@ def test_the_event_id_is_valid_for_google() -> None:
     assert 5 <= len(BOOKING.hex) <= 1024
 
 
-def test_create_treats_a_409_as_already_created() -> None:
-    calendar, http = make(error(409, "duplicate"))
+def test_create_treats_a_409_for_a_live_event_as_already_created() -> None:
+    # e.g. the first attempt succeeded but its response was lost
+    calendar, http = make(error(409, "duplicate"), ok({"status": "confirmed"}))
 
     assert calendar.create_event(EVENT) == BOOKING.hex
-    assert len(requests_of(http)) == 1  # a duplicate is not retried
+    [(_, first, _), (uri, second, _)] = requests_of(http)
+    assert (first, second) == ("POST", "GET")
+    assert urlparse(uri).path.endswith(f"/events/{BOOKING.hex}")
+
+
+def test_create_fails_closed_when_the_id_belongs_to_a_deleted_event(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Google keeps deleted events as "cancelled" tombstones and never lets the id be reused.
+    calendar, _ = make(error(409, "duplicate"), ok({"status": "cancelled"}))
+
+    with caplog.at_level(logging.ERROR), pytest.raises(CalendarUnavailableError):
+        calendar.create_event(EVENT)
+
+    assert "deleted event" in " ".join(r.getMessage() for r in caplog.records)
+
+
+def test_create_reports_unavailable_if_the_409_lookup_fails() -> None:
+    calendar, _ = make(error(409, "duplicate"), *[error(500)] * 5)
+
+    with pytest.raises(CalendarUnavailableError):
+        calendar.create_event(EVENT)
 
 
 def test_create_retries_a_server_error_then_succeeds() -> None:
@@ -167,6 +189,21 @@ def test_update_of_a_missing_event_raises_event_not_found(status: int) -> None:
 
     with pytest.raises(CalendarEventNotFoundError):
         calendar.update_event(BOOKING.hex, START, END)
+
+
+def test_update_of_a_deleted_event_is_not_found_even_though_google_answers_200() -> None:
+    # Observed against the real API: patching a deleted event succeeds and the event stays
+    # "cancelled" (it is not revived), so the status in the response is what tells us.
+    calendar, _ = make(ok({"id": BOOKING.hex, "status": "cancelled"}))
+
+    with pytest.raises(CalendarEventNotFoundError):
+        calendar.update_event(BOOKING.hex, START, END)
+
+
+def test_update_of_a_live_event_succeeds() -> None:
+    calendar, _ = make(ok({"id": BOOKING.hex, "status": "confirmed"}))
+
+    calendar.update_event(BOOKING.hex, START, END)  # no exception
 
 
 def test_update_reports_other_failures_as_unavailable() -> None:

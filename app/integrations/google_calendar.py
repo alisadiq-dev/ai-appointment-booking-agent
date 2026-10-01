@@ -93,15 +93,15 @@ class GoogleCalendar:
                 "create_event", self._events().insert(calendarId=self._calendar_id, body=body)
             )
         except HttpError as exc:
-            if exc.resp.status == 409:  # already created by an earlier attempt
-                return event_id
+            if exc.resp.status == 409:  # the id is taken: by our earlier attempt, or a tombstone
+                return self._confirm_existing(event_id)
             raise self._unavailable("create_event", exc) from exc
         return event_id
 
     def update_event(self, event_id: str, start: datetime, end: datetime) -> None:
         body = {"start": self._when(start), "end": self._when(end)}
         try:
-            self._execute(
+            updated = self._execute(
                 "update_event",
                 self._events().patch(calendarId=self._calendar_id, eventId=event_id, body=body),
             )
@@ -109,6 +109,10 @@ class GoogleCalendar:
             if exc.resp.status in _GONE:
                 raise CalendarEventNotFoundError(event_id) from exc
             raise self._unavailable("update_event", exc) from exc
+        # Verified against the real API: Google keeps a deleted event as a "cancelled"
+        # tombstone, and patching it answers 200 (it is NOT revived and not a 404).
+        if updated.get("status") == "cancelled":
+            raise CalendarEventNotFoundError(event_id)
 
     def delete_event(self, event_id: str) -> None:
         try:
@@ -153,6 +157,27 @@ class GoogleCalendar:
         raise CalendarUnavailableError
 
     # ---------------------------------------------------------------------- helpers
+
+    def _confirm_existing(self, event_id: str) -> str:
+        """After a 409 on create: succeed only if a live event owns the id.
+
+        Google never lets a deleted event's id be reused (the tombstone stays "cancelled"), so
+        a deleted one cannot satisfy this booking: fail closed. A new booking has a new id.
+        """
+        try:
+            existing = self._execute(
+                "create_event",
+                self._events().get(calendarId=self._calendar_id, eventId=event_id, fields="status"),
+            )
+        except HttpError as exc:
+            raise self._unavailable("create_event", exc) from exc
+        if existing.get("status") == "cancelled":
+            logger.error(
+                "Google Calendar create_event: the event id is already used by a deleted event, "
+                "failing closed"
+            )
+            raise CalendarUnavailableError
+        return event_id
 
     def _events(self) -> Resource:
         # httplib2 is not thread-safe and FastAPI runs sync endpoints in a threadpool,
