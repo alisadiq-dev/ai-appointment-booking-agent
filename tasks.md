@@ -84,12 +84,12 @@ Decisions (approved): `/docs` stays enabled; no CORS (a future frontend needs CO
 
 ## Phase 8: CI/CD and deployment
 Decisions (approved): deploy to Render's free web service from the existing Dockerfile (no GCP billing account available), region Singapore, auto-deploy only after CI passes (`autoDeployTrigger: checksPass`). Production database is a hosted Supabase free project (Singapore), reached through the **session pooler** (IPv4, port 5432); production sets `DB_POOL_MAX_SIZE=5` so the free pooler is not exhausted. Production migrations run only from a manual workflow. No keep-alive ping: the 15-minute idle cold start is documented instead. Secrets live only in Render environment variables and GitHub repository secrets.
-- [ ] GitHub Actions: lint and tests; add a dependency vulnerability scan (`pip-audit` on an exported `uv.lock`) and Dependabot for uv, github-actions and docker (from docs/security.md, API9)
-- [ ] **CI must also run `supabase start` and `supabase test db`, not only pytest** (the pgTAP suite guards the overlap constraint, RLS and privileges)
+- [x] GitHub Actions: lint and tests; add a dependency vulnerability scan (`pip-audit` on an exported `uv.lock`) and Dependabot for uv, github-actions and docker (from docs/security.md, API9)
+- [x] **CI must also run `supabase start` and `supabase test db`, not only pytest** (the pgTAP suite guards the overlap constraint, RLS and privileges)
 - [ ] Live Google and Gemini tests run only from a manual workflow (`live.yml`, `workflow_dispatch`, needs the CI secrets, fails if one is missing) so they never gate Render or spend quota on every push; `CALENDAR_ENABLED` must be `true` in the deployed service
-- [ ] **CI sets `REQUIRE_DB=1`** plus `DATABASE_URL`, `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`, so missing configuration fails the DB-backed and real-GoTrue tests instead of skipping them (see docs/local-supabase.md)
-- [ ] CI must create `supabase/signing_keys.json` before `supabase start` (`echo '[]' > ...` then `supabase gen signing-key --algorithm ES256 --append`; see docs/local-supabase.md) and run `pytest -m local_supabase` with `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY`
-- [ ] **CI must build the Docker image and smoke-test `/health`, so it is verified before deploy**
+- [x] **CI sets `REQUIRE_DB=1`** plus `DATABASE_URL`, `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`, so missing configuration fails the DB-backed and real-GoTrue tests instead of skipping them (see docs/local-supabase.md)
+- [x] CI must create `supabase/signing_keys.json` before `supabase start` (`echo '[]' > ...` then `supabase gen signing-key --algorithm ES256 --append`; see docs/local-supabase.md) and run `pytest -m local_supabase` with `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY`
+- [x] **CI must build the Docker image and smoke-test `/health`, so it is verified before deploy**
 - [ ] `render.yaml` blueprint: Docker runtime, free plan, Singapore, one instance, health check `/health`, `autoDeployTrigger: checksPass`, `CALENDAR_ENABLED=true`, `DB_POOL_MAX_SIZE=5`, all secrets `sync: false`
 - [ ] Manual workflow (`workflow_dispatch`) that runs `supabase link` and `supabase db push` against the hosted project
 - [x] Hosted Supabase project `dhovoboznckrknphwpir` (Singapore) created: Data API off, ES256 signing key active and served at the JWKS URL, anonymous sign-ins off, sign-ups closed, confirm email on
