@@ -48,7 +48,7 @@ jobs:
 
       - name: Export local Supabase settings
         run: |
-          supabase status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY)=' | sed -E 's/^API_URL=/SUPABASE_URL=/; s/^PUBLISHABLE_KEY=/SUPABASE_PUBLISHABLE_KEY=/' >> "$GITHUB_ENV"
+          supabase status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY)=' | sed -E 's/^API_URL=/SUPABASE_URL=/; s/^PUBLISHABLE_KEY=/SUPABASE_PUBLISHABLE_KEY=/' | tr -d '"' >> "$GITHUB_ENV"
           echo "DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres" >> "$GITHUB_ENV"
 
       # REQUIRE_DB=1: missing configuration fails the DB-backed and real-GoTrue tests instead of
