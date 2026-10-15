@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: astral-sh/setup-uv@v10.2.0
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           enable-cache: true
       - uses: supabase/setup-cli@v3.0.1
@@ -67,7 +67,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: astral-sh/setup-uv@v10.2.0
+      - uses: astral-sh/setup-uv@v10.3.0
       # Runtime dependencies only (what ships in the image), pinned and hashed from uv.lock.
       - run: uv export --no-dev --no-emit-project --format requirements-txt -o requirements-audit.txt
       # --disable-pip: audit the hashed file as is, without building an environment (the pypa
